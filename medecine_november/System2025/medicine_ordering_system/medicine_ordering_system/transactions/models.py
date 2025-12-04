@@ -17,6 +17,67 @@ class PaymentMethod(models.Model):
         return self.name
 
 
+class PaymentGateway(models.Model):
+    """
+    Payment gateway configuration - allows admin to configure and switch between gateways
+    """
+    GATEWAY_TYPES = [
+        ('stripe', 'Stripe'),
+        ('paymongo', 'PayMongo'),
+        ('paypal', 'PayPal'),
+        ('square', 'Square'),
+        ('dragonpay', 'DragonPay'),
+        ('cash_on_delivery', 'Cash on Delivery'),
+    ]
+    
+    name = models.CharField(max_length=50, unique=True)
+    gateway_type = models.CharField(max_length=50, choices=GATEWAY_TYPES)
+    is_active = models.BooleanField(default=False, help_text='Only one gateway can be active at a time')
+    is_test_mode = models.BooleanField(default=True, help_text='Use test/sandbox environment')
+    
+    # API Credentials (stored encrypted in production - using plain text for now)
+    api_key_public = models.CharField(max_length=255, blank=True, help_text='Public/Test API Key')
+    api_key_secret = models.CharField(max_length=255, blank=True, help_text='Secret/Private API Key')
+    webhook_secret = models.CharField(max_length=255, blank=True, help_text='Webhook signing secret')
+    
+    # Additional configuration (JSON)
+    config = models.JSONField(default=dict, blank=True, help_text='Additional gateway-specific configuration')
+    
+    # Metadata
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_gateways')
+    
+    class Meta:
+        ordering = ['-is_active', 'name']
+        verbose_name = 'Payment Gateway'
+        verbose_name_plural = 'Payment Gateways'
+    
+    def __str__(self):
+        status = "Active" if self.is_active else "Inactive"
+        mode = "Test" if self.is_test_mode else "Live"
+        return f"{self.get_gateway_type_display()} - {status} ({mode})"
+    
+    def save(self, *args, **kwargs):
+        # Ensure only one gateway is active at a time
+        if self.is_active:
+            PaymentGateway.objects.filter(is_active=True).exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_configured(self):
+        """Check if gateway has required credentials"""
+        if self.gateway_type == 'cash_on_delivery':
+            return True  # COD doesn't need API keys
+        return bool(self.api_key_secret)
+    
+    @property
+    def display_name(self):
+        """Get display name for the gateway"""
+        return self.get_gateway_type_display()
+
+
 class Transaction(models.Model):
     """
     Payment transactions
@@ -39,6 +100,7 @@ class Transaction(models.Model):
     transaction_id = models.CharField(max_length=50, unique=True)
     order = models.ForeignKey('orders.Order', on_delete=models.CASCADE, related_name='transactions')
     payment_method = models.ForeignKey(PaymentMethod, on_delete=models.CASCADE)
+    payment_gateway = models.ForeignKey(PaymentGateway, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
     
     # Transaction details
     transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES, default='payment')
