@@ -1,0 +1,840 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Forecast Analytics - OnCare{% endblock %}
+
+{% block extra_css %}
+<style>
+    .forecast-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border-radius: 20px;
+        padding: 30px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        border-left: 6px solid #007bff;
+        display: none;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .forecast-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #007bff, #28a745, #ffc107, #dc3545);
+        opacity: 0.8;
+    }
+    
+    .forecast-card.active {
+        display: block;
+        animation: slideInUp 0.6s ease-out;
+    }
+    
+    @keyframes slideInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .forecast-controls {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 15px;
+        padding: 25px;
+        margin-bottom: 30px;
+        display: flex;
+        gap: 15px;
+        align-items: end;
+        flex-wrap: nowrap;
+        width: 100%;
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .forecast-controls::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        pointer-events: none;
+    }
+    
+    .forecast-controls .form-label {
+        color: white;
+        font-weight: 600;
+        margin-bottom: 8px;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    
+    .forecast-controls .form-select {
+        border: 2px solid rgba(255,255,255,0.2);
+        background: rgba(255,255,255,0.9);
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+    
+    .forecast-controls .form-select:focus {
+        border-color: #fff;
+        box-shadow: 0 0 0 0.2rem rgba(255,255,255,0.25);
+        background: white;
+    }
+    
+    .forecast-controls .btn {
+        border: 2px solid rgba(255,255,255,0.3);
+        background: rgba(255,255,255,0.1);
+        color: white;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
+    }
+    
+    .forecast-controls .btn:hover {
+        background: rgba(255,255,255,0.2);
+        border-color: rgba(255,255,255,0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .period-selector, .horizon-selector {
+        width: 120px;
+    }
+    
+    .medicine-selector {
+        flex: 1;
+        min-width: 250px;
+    }
+    
+    .generate-btn {
+        height: 38px;
+        min-width: 140px;
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 450px;
+        margin: 25px 0;
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(0, 123, 255, 0.1);
+    }
+    
+    .forecast-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #e9ecef;
+    }
+    
+    .medicine-title {
+        color: #2c3e50;
+        margin: 0;
+        font-size: 1.5rem;
+    }
+    
+    .model-info {
+        text-align: right;
+        color: #6c757d;
+    }
+    
+    .forecast-stats {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 25px;
+        padding: 20px;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(0, 123, 255, 0.1);
+    }
+    
+    .stat-item {
+        text-align: center;
+        padding: 10px;
+        border-radius: 10px;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .stat-item::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, rgba(0, 123, 255, 0.05), rgba(40, 167, 69, 0.05));
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    
+    .stat-item:hover::before {
+        opacity: 1;
+    }
+    
+    .stat-item:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 20px rgba(0, 123, 255, 0.15);
+    }
+    
+    .stat-value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, #007bff, #28a745);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 5px;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .stat-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 60px;
+        color: #6c757d;
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 15px;
+        margin: 20px 0;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+    }
+    
+    .loading .spinner-border {
+        width: 3rem;
+        height: 3rem;
+        border-width: 0.3em;
+    }
+    
+    .error {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        color: #721c24;
+        padding: 20px;
+        border-radius: 15px;
+        margin: 20px 0;
+        border-left: 5px solid #dc3545;
+        box-shadow: 0 5px 20px rgba(220, 53, 69, 0.15);
+        animation: shake 0.5s ease-in-out;
+    }
+    
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-5px); }
+        75% { transform: translateX(5px); }
+    }
+    
+    .btn-group .btn {
+        margin-right: 8px;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .btn-group .btn::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        transition: left 0.5s;
+    }
+    
+    .btn-group .btn:hover::before {
+        left: 100%;
+    }
+    
+    .btn-group .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+    }
+    
+    .btn-group .btn.active {
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        color: white;
+        box-shadow: 0 4px 15px rgba(0, 123, 255, 0.4);
+    }
+    
+    @media (max-width: 768px) {
+        .forecast-controls {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .period-selector, .horizon-selector, .medicine-selector, .generate-btn {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fas fa-chart-line me-2"></i>Demand Forecast Analytics</h2>
+                <div class="text-muted">
+                    <small>Role: {{ user.get_role_display }}</small>
+                </div>
+            </div>
+            
+            <!-- Forecast Controls -->
+            <div class="forecast-controls">
+                <div class="period-selector">
+                    <label for="periodSelect" class="form-label">Forecast Period</label>
+                    <select id="periodSelect" class="form-select">
+                        <option value="daily">Daily</option>
+                        <option value="weekly" selected>Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+                
+                <div class="horizon-selector">
+                    <label for="horizonSelect" class="form-label">Forecast Horizon</label>
+                    <select id="horizonSelect" class="form-select">
+                        <option value="4">4 weeks</option>
+                        <option value="8">8 weeks</option>
+                        <option value="12">12 weeks</option>
+                        <option value="16">16 weeks</option>
+                    </select>
+                </div>
+                
+                <div class="medicine-selector">
+                    <label for="medicineSelect" class="form-label">Select Medicine</label>
+                    <select id="medicineSelect" class="form-select">
+                        <option value="">Choose a medicine...</option>
+                        {% for medicine in medicines %}
+                        <option value="{{ medicine.id }}">{{ medicine.name }} ({{ medicine.strength }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <button id="generateBtn" class="btn btn-primary generate-btn">
+                    <i class="fas fa-chart-line me-2"></i>Generate Forecast
+                </button>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="loadingState" class="loading" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Generating forecast...</p>
+            </div>
+            
+            <!-- Error Display -->
+            <div id="errorDisplay" class="error" style="display: none;"></div>
+            
+            <!-- Forecast Display Area -->
+            <div id="forecastDisplayArea"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script>
+// Register the zoom plugin
+Chart.register(ChartZoom);
+
+let currentChart = null;
+
+// Update horizon options based on period selection
+function updateHorizonOptions() {
+    const period = document.getElementById('periodSelect').value;
+    const horizonSelect = document.getElementById('horizonSelect');
+    
+    // Clear existing options
+    horizonSelect.innerHTML = '';
+    
+    let options = [];
+    if (period === 'daily') {
+        options = [
+            { value: '7', text: '7 days' },
+            { value: '14', text: '14 days' },
+            { value: '21', text: '21 days' },
+            { value: '30', text: '30 days' }
+        ];
+    } else if (period === 'weekly') {
+        options = [
+            { value: '4', text: '4 weeks' },
+            { value: '8', text: '8 weeks' },
+            { value: '12', text: '12 weeks' },
+            { value: '16', text: '16 weeks' }
+        ];
+    } else if (period === 'monthly') {
+        options = [
+            { value: '3', text: '3 months' },
+            { value: '6', text: '6 months' },
+            { value: '12', text: '12 months' },
+            { value: '24', text: '24 months' }
+        ];
+    }
+    
+    options.forEach(option => {
+        const optionElement = document.createElement('option');
+        optionElement.value = option.value;
+        optionElement.textContent = option.text;
+        horizonSelect.appendChild(optionElement);
+    });
+}
+
+// Show/hide loading state
+function showLoading(show) {
+    const loadingState = document.getElementById('loadingState');
+    const generateBtn = document.getElementById('generateBtn');
+    
+    if (show) {
+        loadingState.style.display = 'block';
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating...';
+    } else {
+        loadingState.style.display = 'none';
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = '<i class="fas fa-chart-line me-2"></i>Generate Forecast';
+    }
+}
+
+// Show error message
+function showError(message) {
+    const errorDisplay = document.getElementById('errorDisplay');
+    errorDisplay.textContent = message;
+    errorDisplay.style.display = 'block';
+    
+    // Hide error after 5 seconds
+    setTimeout(() => {
+        errorDisplay.style.display = 'none';
+    }, 5000);
+}
+
+// Hide error message
+function hideError() {
+    const errorDisplay = document.getElementById('errorDisplay');
+    errorDisplay.style.display = 'none';
+}
+
+// Generate forecast
+async function generateForecast() {
+    const medicineId = document.getElementById('medicineSelect').value;
+    const period = document.getElementById('periodSelect').value;
+    const horizon = document.getElementById('horizonSelect').value;
+    
+    if (!medicineId) {
+        showError('Please select a medicine');
+        return;
+    }
+    
+    showLoading(true);
+    hideError();
+    
+    try {
+        const response = await fetch('{% url "analytics:api_generate_forecast_on_demand" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                medicine_id: medicineId,
+                forecast_period: period,
+                forecast_horizon: horizon
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // The API returns chart_data, so we need to pass the correct structure
+            const forecastData = {
+                medicine_name: data.medicine_name || 'Unknown Medicine',
+                forecast_period: data.forecast_period || 'weekly',
+                chart_data: data.chart_data || {},
+                model_info: (data.chart_data && data.chart_data.model_info) ? data.chart_data.model_info : {}
+            };
+            displayForecast(forecastData);
+        } else {
+            if (data.error === 'insufficient_data') {
+                showError(`${data.message} ${data.suggestion}`);
+            } else {
+                showError(`Error: ${data.error}`);
+            }
+        }
+    } catch (error) {
+        console.error('Error generating forecast:', error);
+        showError('Failed to generate forecast. Please try again.');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Display the generated forecast
+function displayForecast(data) {
+    const displayArea = document.getElementById('forecastDisplayArea');
+    
+    // Create forecast card HTML
+    const forecastCard = `
+        <div class="forecast-card active">
+            <div class="forecast-header">
+                <h3 class="medicine-title">
+                    <i class="fas fa-pills me-2"></i>${data.medicine_name}
+                </h3>
+                <div class="model-info">
+                    <strong>${data.model_info ? data.model_info.arima_params : 'N/A'}</strong>
+                    <br>
+                    <small>AIC: ${data.model_info ? data.model_info.aic.toFixed(2) : 'N/A'} | MAPE: ${data.model_info ? data.model_info.mape.toFixed(2) : 'N/A'}%</small>
+                </div>
+            </div>
+            
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Interactive Forecast Chart
+                </h6>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="zoomInBtn" title="Zoom In">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="zoomOutBtn" title="Zoom Out">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="resetZoomBtn" title="Reset Zoom">
+                        <i class="fas fa-expand-arrows-alt"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="forecastChart"></canvas>
+            </div>
+            <div class="mt-2">
+                <small class="text-muted">
+                    <i class="fas fa-info-circle me-1"></i>
+                    <strong>Zoom:</strong> Mouse wheel or use the zoom buttons above • <strong>Reset:</strong> Click the expand button to reset view
+                </small>
+            </div>
+            
+            <div class="forecast-stats">
+                <div class="stat-item">
+                    <div class="stat-value">${data.forecast_period.charAt(0).toUpperCase() + data.forecast_period.slice(1)}</div>
+                    <div class="stat-label">Forecast Period</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${data.forecast_horizon}</div>
+                    <div class="stat-label">Forecast Horizon</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${data.model_info ? data.model_info.model_quality || 'N/A' : 'N/A'}</div>
+                    <div class="stat-label">Model Quality</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${data.model_info ? data.model_info.rmse.toFixed(2) : 'N/A'}</div>
+                    <div class="stat-label">RMSE</div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Update display area
+    displayArea.innerHTML = forecastCard;
+    
+    // Create the chart with error handling
+    try {
+        createForecastChart(data.chart_data);
+        
+        // Setup zoom and pan controls after HTML is inserted
+        setTimeout(() => {
+            setupZoomControls();
+        }, 100);
+    } catch (chartError) {
+        console.error('Error creating chart:', chartError);
+        showError('Chart creation failed. Please try again.');
+    }
+}
+
+// Create forecast chart
+function createForecastChart(data) {
+    // Destroy existing chart if it exists
+    if (currentChart) {
+        currentChart.destroy();
+    }
+    
+    const canvas = document.getElementById('forecastChart');
+    if (!canvas) {
+        throw new Error('Canvas element not found');
+    }
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Validate data
+    if (!data || (!data.historical && !data.forecast)) {
+        throw new Error('Invalid chart data');
+    }
+    
+    // Prepare data arrays
+    const historicalData = (data.historical && data.historical.values) ? data.historical.values : [];
+    const forecastData = (data.forecast && data.forecast.values) ? data.forecast.values : [];
+    
+    if (!Array.isArray(historicalData) || !Array.isArray(forecastData)) {
+        throw new Error('Invalid data arrays');
+    }
+    
+    // Create combined data arrays
+    const combinedHistoricalData = [...historicalData];
+    const combinedForecastData = [...Array(historicalData.length).fill(null), ...forecastData];
+    
+    // Create chart with zoom and pan functionality
+    currentChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: (data.labels && Array.isArray(data.labels)) ? data.labels : [],
+            datasets: [{
+                label: 'Historical Demand',
+                data: combinedHistoricalData,
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1,
+                pointRadius: 4,
+                pointHoverRadius: 8,
+                pointHoverBorderWidth: 3,
+                pointHoverBorderColor: 'rgb(75, 192, 192)',
+                pointHoverBackgroundColor: 'white',
+                fill: false,
+                borderWidth: 2
+            }, {
+                label: 'Forecasted Demand',
+                data: combinedForecastData,
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                tension: 0.1,
+                pointRadius: 4,
+                pointHoverRadius: 8,
+                pointHoverBorderWidth: 3,
+                pointHoverBorderColor: 'rgb(255, 99, 132)',
+                pointHoverBackgroundColor: 'white',
+                borderDash: [5, 5],
+                fill: false,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 1000,
+                easing: 'easeInOutQuart'
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Interactive Demand Forecast (Auto ARIMA)',
+                    font: {
+                        size: 16,
+                        weight: 'bold'
+                    },
+                    color: '#2c3e50'
+                },
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 20,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    enabled: true,
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: 'white',
+                    bodyColor: 'white',
+                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                    borderWidth: 1,
+                    cornerRadius: 8,
+                    displayColors: true,
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            const labels = (data.labels && Array.isArray(data.labels)) ? data.labels : [];
+                            return labels[tooltipItems[0].dataIndex] || 'Unknown Period';
+                        },
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y.toFixed(2) + ' units';
+                            }
+                            return label;
+                        },
+                        afterLabel: function(context) {
+                            if (context.datasetIndex === 1 && context.parsed.y !== null) {
+                                return 'Forecasted Value';
+                            }
+                            return '';
+                        }
+                    }
+                },
+                zoom: {
+                    pan: {
+                        enabled: false
+                    },
+                    zoom: {
+                        wheel: {
+                            enabled: true,
+                            speed: 0.1
+                        },
+                        pinch: {
+                            enabled: true
+                        },
+                        mode: 'xy'
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time Period',
+                        font: {
+                            size: 12,
+                            weight: 'bold'
+                        },
+                        color: '#495057'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 0,
+                        font: {
+                            size: 10
+                        },
+                        color: '#6c757d'
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)',
+                        drawBorder: true
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Quantity (Units)',
+                        font: {
+                            size: 12,
+                            weight: 'bold'
+                        },
+                        color: '#495057'
+                    },
+                    ticks: {
+                        font: {
+                            size: 10
+                        },
+                        color: '#6c757d',
+                        callback: function(value) {
+                            return value.toFixed(0) + ' units';
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)',
+                        drawBorder: true
+                    }
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            },
+            elements: {
+                line: {
+                    borderWidth: 2
+                },
+                point: {
+                    hoverBorderWidth: 3
+                }
+            },
+            onHover: (event, activeElements) => {
+                event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default';
+            }
+        }
+    });
+}
+
+// Setup zoom controls
+function setupZoomControls() {
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
+    const resetZoomBtn = document.getElementById('resetZoomBtn');
+    
+    if (zoomInBtn) {
+        zoomInBtn.addEventListener('click', function() {
+            if (currentChart && currentChart.zoom) {
+                currentChart.zoom.zoom(1.2);
+            }
+        });
+    }
+    
+    if (zoomOutBtn) {
+        zoomOutBtn.addEventListener('click', function() {
+            if (currentChart && currentChart.zoom) {
+                currentChart.zoom.zoom(0.8);
+            }
+        });
+    }
+    
+    if (resetZoomBtn) {
+        resetZoomBtn.addEventListener('click', function() {
+            if (currentChart && currentChart.zoom) {
+                currentChart.zoom.reset();
+            }
+        });
+    }
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Update horizon options on period change
+    document.getElementById('periodSelect').addEventListener('change', updateHorizonOptions);
+    
+    // Generate forecast on button click
+    document.getElementById('generateBtn').addEventListener('click', generateForecast);
+    
+    // Initialize horizon options
+    updateHorizonOptions();
+});
+</script>
+{% endblock %}

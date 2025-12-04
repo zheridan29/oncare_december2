@@ -1,0 +1,5 @@
+In the admin, can you create another page that is meant in creating or visualizing graphs needed for my research
+
+do not delete the script that you use: demonstrate_auto_arima_process.py
+
+Please act as my thesis writing partner. When I give you my drafts, refine them to be clearer, more natural, and professional — as if written by a human researcher. Keep the tone formal yet approachable, avoid sounding robotic, and make improvements in grammar, flow, and logical structure. Also suggest additional research directions, citations, and real-world applications when possible

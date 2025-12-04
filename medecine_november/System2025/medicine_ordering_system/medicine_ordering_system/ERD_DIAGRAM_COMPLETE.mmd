@@ -1,0 +1,146 @@
+erDiagram
+    USER ||--o{ ORDER : "creates"
+    USER ||--o| SALESREPPROFILE : "has"
+    USER ||--o| PHARMACISTADMINPROFILE : "has"
+    USER ||--o{ STOCKMOVEMENT : "creates"
+    USER ||--o{ REORDERALERT : "processes"
+    
+    ORDER ||--o{ ORDERITEM : "contains"
+    ORDER ||--o{ ORDERSTATUSHISTORY : "has"
+    ORDER }o--|| USER : "created_by"
+    ORDER }o--o| USER : "verified_by"
+    
+    ORDERITEM }o--|| MEDICINE : "references"
+    ORDERITEM }o--|| ORDER : "belongs_to"
+    
+    MEDICINE }o--|| CATEGORY : "belongs_to"
+    MEDICINE }o--|| MANUFACTURER : "from"
+    MEDICINE ||--o{ STOCKMOVEMENT : "has"
+    MEDICINE ||--o{ REORDERALERT : "has"
+    MEDICINE ||--o{ MEDICINEIMAGE : "has"
+    
+    CATEGORY ||--o{ CATEGORY : "parent_category"
+    
+    USER {
+        int id PK
+        string username
+        string email
+        string role
+        string phone_number
+        date date_of_birth
+        text address
+        datetime created_at
+    }
+    
+    SALESREPPROFILE {
+        int id PK
+        int user_id FK
+        string employee_id
+        string territory
+        decimal commission_rate
+        boolean is_active
+    }
+    
+    PHARMACISTADMINPROFILE {
+        int id PK
+        int user_id FK
+        string license_number
+        date license_expiry
+        string specialization
+        boolean is_available
+    }
+    
+    ORDER {
+        int id PK
+        int sales_rep_id FK
+        string order_number UK
+        string customer_name
+        string status
+        string payment_status
+        decimal subtotal
+        decimal tax_amount
+        decimal total_amount
+        datetime created_at
+    }
+    
+    ORDERITEM {
+        int id PK
+        int order_id FK
+        int medicine_id FK
+        int quantity
+        decimal unit_price
+        decimal total_price
+    }
+    
+    ORDERSTATUSHISTORY {
+        int id PK
+        int order_id FK
+        int changed_by FK
+        string old_status
+        string new_status
+        datetime changed_at
+    }
+    
+    MEDICINE {
+        int id PK
+        int category_id FK
+        int manufacturer_id FK
+        string name
+        string generic_name
+        string dosage_form
+        string strength
+        decimal unit_price
+        decimal cost_price
+        int current_stock
+        int reorder_point
+        boolean is_active
+        datetime created_at
+    }
+    
+    CATEGORY {
+        int id PK
+        int parent_category_id FK
+        string name UK
+        text description
+        boolean is_active
+    }
+    
+    MANUFACTURER {
+        int id PK
+        string name UK
+        string country
+        string contact_email
+        boolean is_active
+    }
+    
+    STOCKMOVEMENT {
+        int id PK
+        int medicine_id FK
+        int created_by FK
+        string movement_type
+        int quantity
+        string reference_number
+        text notes
+        datetime created_at
+    }
+    
+    REORDERALERT {
+        int id PK
+        int medicine_id FK
+        int processed_by FK
+        int current_stock
+        int suggested_quantity
+        string priority
+        boolean is_processed
+        datetime created_at
+    }
+    
+    MEDICINEIMAGE {
+        int id PK
+        int medicine_id FK
+        string image
+        boolean is_primary
+        datetime created_at
+    }
+
+

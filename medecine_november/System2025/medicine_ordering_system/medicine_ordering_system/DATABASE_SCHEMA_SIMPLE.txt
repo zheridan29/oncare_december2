@@ -1,0 +1,162 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    ONCARE MEDICINE ORDERING SYSTEM
+                    Database Schema - Level 0 (Essential)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            CORE ENTITIES                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────┐
+│    USER      │ ◄───────────┐
+│──────────────│             │
+│ PK: id       │             │ 1
+│ username     │             │
+│ role         │             │ creates
+│ email        │             │
+└──────┬───────┘             │
+       │                     │
+       │ 1                   │
+       │                     │
+       │ creates             │
+       │                     │
+       │ N                   │
+       ▼                     │
+┌──────────────┐             │
+│    ORDER     │             │
+│──────────────│             │
+│ PK: id       │             │
+│ FK:          │             │
+│   sales_rep  │─────────────┘
+│ order_number │
+│ status       │
+│ total_amount │
+└──────┬───────┘
+       │
+       │ 1
+       │
+       │ contains
+       │
+       │ N
+       ▼
+┌──────────────────────────────────────────────────────────────┐
+│                      ORDERITEM                               │
+│──────────────────────────────────────────────────────────────│
+│ PK: id                                                       │
+│ FK: order_id    ──────────────────────┐                     │
+│ FK: medicine_id ────────────────────┐ │                     │
+│ quantity                            │ │                     │
+│ unit_price                          │ │                     │
+│ total_price                         │ │                     │
+└─────────────────────────────────────│ │─────────────────────┘
+                                      │ │
+                                      │ │ N
+                                      │ │
+                                      │ │ references
+                                      │ │
+                                      │ │ 1
+                                      ▼ │
+┌───────────────────────────────────────┴──┐
+│              MEDICINE                    │
+│──────────────────────────────────────────│
+│ PK: id                                   │
+│ name                                     │
+│ unit_price                               │
+│ current_stock                            │
+│ FK: category_id    ────────────────┐     │
+│ FK: manufacturer_id ──────────────┐│     │
+└───────────────────────────────────││─────┘
+                                    ││
+                                    ││ N
+                                    ││
+                        ┌───────────┴┴────────────┐
+                        │                         │
+                        │ N                       │ N
+                        │                         │
+                        ▼                         ▼
+            ┌──────────────────┐      ┌──────────────────┐
+            │    CATEGORY      │      │  MANUFACTURER    │
+            │──────────────────│      │──────────────────│
+            │ PK: id           │      │ PK: id           │
+            │ name             │      │ name             │
+            └──────────────────┘      └──────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                              RELATIONSHIPS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. USER (1) ──creates──> (N) ORDER
+2. ORDER (1) ──contains──> (N) ORDERITEM
+3. ORDERITEM (N) ──references──> (1) MEDICINE
+4. MEDICINE (N) ──belongs_to──> (1) CATEGORY
+5. MEDICINE (N) ──from──> (1) MANUFACTURER
+
+═══════════════════════════════════════════════════════════════════════════════
+                          ESSENTIAL TABLES (6 TOTAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. USER          - System users (Sales Rep, Pharmacist, Admin)
+2. ORDER         - Sales transactions
+3. ORDERITEM     - Individual items in orders
+4. MEDICINE      - Product catalog with inventory
+5. CATEGORY      - Medicine categorization
+6. MANUFACTURER  - Medicine suppliers
+
+═══════════════════════════════════════════════════════════════════════════════
+                            KEY ATTRIBUTES
+═══════════════════════════════════════════════════════════════════════════════
+
+USER:
+  • id (Primary Key)
+  • username, email
+  • role (sales_rep, pharmacist_admin, admin)
+
+ORDER:
+  • id (Primary Key)
+  • sales_rep_id (Foreign Key → User)
+  • order_number (Unique)
+  • status, payment_status
+  • total_amount
+
+ORDERITEM:
+  • id (Primary Key)
+  • order_id (Foreign Key → Order)
+  • medicine_id (Foreign Key → Medicine)
+  • quantity, unit_price, total_price
+
+MEDICINE:
+  • id (Primary Key)
+  • name, description
+  • unit_price, cost_price
+  • current_stock, reorder_point
+  • category_id (Foreign Key → Category)
+  • manufacturer_id (Foreign Key → Manufacturer)
+
+CATEGORY:
+  • id (Primary Key)
+  • name
+
+MANUFACTURER:
+  • id (Primary Key)
+  • name
+
+═══════════════════════════════════════════════════════════════════════════════
+                          BUSINESS FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+User (Sales Rep) creates Order
+         │
+         ▼
+Order contains multiple OrderItems
+         │
+         ▼
+Each OrderItem references a Medicine
+         │
+         ▼
+Medicine belongs to Category
+         │
+         └─── and comes from Manufacturer
+
+═══════════════════════════════════════════════════════════════════════════════
+
+

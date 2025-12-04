@@ -1,0 +1,1272 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Analytics Dashboard - OnCare{% endblock %}
+
+{% block extra_css %}
+<style>
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+    
+    .metric-label {
+        font-size: 1.1rem;
+        opacity: 0.9;
+    }
+    
+    .chart-container {
+        background: white;
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .forecast-card {
+        border-left: 4px solid #28a745;
+    }
+    
+    .alert-card {
+        border-left: 4px solid #dc3545;
+    }
+    
+    .btn-group .btn {
+        border-radius: 0.375rem;
+        margin-right: 2px;
+    }
+    
+    .btn-group .btn:last-child {
+        margin-right: 0;
+    }
+    
+    .btn-group .btn.active {
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- CSRF Token for AJAX requests -->
+{% csrf_token %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-chart-line me-2"></i>Analytics Dashboard
+        </h1>
+    </div>
+</div>
+
+<!-- Key Metrics Row -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="metric-value" id="total-forecasts">0</div>
+            <div class="metric-label">Active Forecasts</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="metric-value" id="low-stock-items">0</div>
+            <div class="metric-label">Low Stock Items</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="metric-value" id="avg-accuracy">0%</div>
+            <div class="metric-label">Avg Forecast Accuracy</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="metric-value" id="optimization-savings">₱0</div>
+            <div class="metric-label">Cost Savings</div>
+        </div>
+    </div>
+</div>
+
+<!-- Medicine Selection Row -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-filter me-2"></i>Medicine Analytics Filter
+                </h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <label for="medicineAnalyticsSelect" class="form-label">Select Medicine for Analytics</label>
+                        <select class="form-select" id="medicineAnalyticsSelect">
+                            <option value="">All Medicines (General Analytics)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button class="btn btn-primary" onclick="loadMedicineAnalytics()">
+                            <i class="fas fa-chart-line me-1"></i>Load Analytics
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Forecast Management Row -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-cogs me-2"></i>Forecast Management
+                </h5>
+                <div class="row">
+                    <div class="col-md-4">
+                        <label for="existingForecastSelect" class="form-label">Select Existing Forecast</label>
+                        <select class="form-select" id="existingForecastSelect">
+                            <option value="">Choose a forecast to extend...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="extendHorizon" class="form-label">Extend by (periods)</label>
+                        <input type="number" class="form-control" id="extendHorizon" value="4" min="1" max="20">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="extendPeriod" class="form-label">Period Type</label>
+                        <select class="form-select" id="extendPeriod">
+                            <option value="daily">Daily</option>
+                            <option value="weekly" selected>Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button class="btn btn-success w-100" onclick="extendForecast()">
+                            <i class="fas fa-expand-arrows-alt me-1"></i>Extend
+                        </button>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#forecastModal">
+                            <i class="fas fa-plus me-1"></i>Generate New Forecast
+                        </button>
+                        <button class="btn btn-info me-2" onclick="refreshForecasts()">
+                            <i class="fas fa-sync me-1"></i>Refresh Forecasts
+                        </button>
+                        <button class="btn btn-warning me-2" onclick="viewForecastHistory()">
+                            <i class="fas fa-history me-1"></i>View History
+                        </button>
+                        <a href="{% url 'analytics:model_evaluation' %}" class="btn btn-info me-2">
+                            <i class="fas fa-chart-bar me-1"></i>Model Evaluation
+                        </a>
+                        {% if user.is_admin %}
+                        <a href="{% url 'analytics:forecast_only' %}" class="btn btn-success">
+                            <i class="fas fa-chart-line me-1"></i>Forecast View
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row">
+    <!-- Demand Forecast Chart -->
+    <div class="col-lg-8">
+        <div class="chart-container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-area me-2"></i><span id="chartTitle">Demand Forecast Trends</span>
+                </h5>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="zoomInBtn" title="Zoom In">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="zoomOutBtn" title="Zoom Out">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="resetZoomBtn" title="Reset Zoom">
+                        <i class="fas fa-expand-arrows-alt"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-info" id="panBtn" title="Pan Mode (Hold Ctrl + Drag)">
+                        <i class="fas fa-hand-paper"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container" style="height: 400px;">
+                <canvas id="demandForecastChart"></canvas>
+            </div>
+            <div class="mt-2">
+                <small class="text-muted">
+                    <i class="fas fa-info-circle me-1"></i>
+                    <strong>Zoom:</strong> Mouse wheel or drag to zoom • <strong>Pan:</strong> Hold Ctrl + drag • <strong>Reset:</strong> Click reset button
+                </small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Forecast Accuracy Chart -->
+    <div class="col-lg-4">
+        <div class="chart-container">
+            <h5 class="mb-3">
+                <i class="fas fa-bullseye me-2"></i>Forecast Accuracy
+            </h5>
+            <div class="chart-container" style="height: 400px;">
+                <canvas id="accuracyChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Forecasts and Alerts Row -->
+<div class="row">
+    <!-- Recent Forecasts -->
+    <div class="col-lg-6">
+        <div class="card forecast-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-clock me-2"></i>Recent Forecasts
+                </h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshRecentForecasts()" title="Refresh Forecasts">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Medicine</th>
+                                <th>Period</th>
+                                <th>Accuracy</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent-forecasts-table">
+                            {% for forecast in recent_forecasts %}
+                            <tr>
+                                <td>{{ forecast.medicine.name }}</td>
+                                <td>{{ forecast.forecast_period|title }}</td>
+                                <td>
+                                    <span class="badge bg-{% if forecast.mape < 20 %}success{% elif forecast.mape < 40 %}warning{% else %}danger{% endif %}">
+                                        {{ forecast.mape|floatformat:1 }}%
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{% if forecast.is_active %}success{% else %}secondary{% endif %}">
+                                        {% if forecast.is_active %}Active{% else %}Inactive{% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-sm btn-outline-primary" onclick="viewForecastDetails({{ forecast.id }})" title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" onclick="deleteForecast({{ forecast.id }}, '{{ forecast.medicine.name }}')" title="Delete Forecast">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">No forecasts available</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Low Stock Alerts -->
+    <div class="col-lg-6">
+        <div class="card alert-card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Low Stock Alerts
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Medicine</th>
+                                <th>Current Stock</th>
+                                <th>Reorder Point</th>
+                                <th>Priority</th>
+                            </tr>
+                        </thead>
+                        <tbody id="low-stock-table">
+                            {% for medicine in low_stock_medicines %}
+                            <tr>
+                                <td>{{ medicine.name }}</td>
+                                <td>
+                                    <span class="badge bg-{% if medicine.current_stock == 0 %}danger{% else %}warning{% endif %}">
+                                        {{ medicine.current_stock }}
+                                    </span>
+                                </td>
+                                <td>{{ medicine.reorder_point }}</td>
+                                <td>
+                                    <span class="badge bg-{% if medicine.current_stock == 0 %}danger{% elif medicine.current_stock <= medicine.reorder_point %}warning{% else %}info{% endif %}">
+                                        {% if medicine.current_stock == 0 %}Critical{% elif medicine.current_stock <= medicine.reorder_point %}High{% else %}Medium{% endif %}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">No low stock alerts</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Quick Actions</h5>
+                <div class="row">
+                    <div class="col-md-3">
+                        <button class="btn btn-primary w-100 mb-2" onclick="generateBulkForecasts()">
+                            <i class="fas fa-magic me-2"></i>Generate Bulk Forecasts
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-success w-100 mb-2" onclick="optimizeInventory()">
+                            <i class="fas fa-cogs me-2"></i>Optimize Inventory
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-info w-100 mb-2" onclick="viewReports()">
+                            <i class="fas fa-file-alt me-2"></i>View Reports
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-warning w-100 mb-2" onclick="exportData()">
+                            <i class="fas fa-download me-2"></i>Export Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Forecast Generation Modal -->
+<div class="modal fade" id="forecastModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Generate Demand Forecast</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="forecastForm">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="medicineSelect" class="form-label">Select Medicine</label>
+                                <select class="form-select" id="medicineSelect" required>
+                                    <option value="">Choose a medicine...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="forecastPeriod" class="form-label">Forecast Period</label>
+                                <select class="form-select" id="forecastPeriod">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly" selected>Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="forecastHorizon" class="form-label">Forecast Horizon (periods)</label>
+                                <input type="number" class="form-control" id="forecastHorizon" value="4" min="1" max="52">
+                                <small class="form-text text-muted">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Extended forecasting: Daily (max 30), Weekly (max 52), Monthly (max 24)
+                                </small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="serviceLevel" class="form-label">Service Level (%)</label>
+                                <input type="number" class="form-control" id="serviceLevel" value="95" min="80" max="99">
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="generateForecast()">Generate Forecast</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script>
+// Register Chart.js zoom plugin
+Chart.register(ChartZoom);
+
+$(document).ready(function() {
+    loadDashboardData();
+    loadDemandForecastChart();
+    loadAccuracyChart();
+    loadMedicines();
+    loadAnalyticsMedicines();
+    loadExistingForecasts();
+    setupZoomControls();
+    
+    // Add event listener for period change to update horizon limits
+    $('#forecastPeriod').on('change', updateHorizonLimits);
+    $('#extendPeriod').on('change', function() {
+        const period = $(this).val();
+        const maxLimits = {
+            'daily': 30,
+            'weekly': 52,
+            'monthly': 24
+        };
+        $('#extendHorizon').attr('max', maxLimits[period]);
+    });
+});
+
+function loadDashboardData() {
+    // Load key metrics
+    $.ajax({
+        url: '/analytics/api/system-metrics/',
+        method: 'GET',
+        success: function(data) {
+            // Update metrics (this would be calculated from the data)
+            $('#total-forecasts').text('{{ recent_forecasts|length }}');
+            $('#low-stock-items').text('{{ low_stock_medicines|length }}');
+            $('#avg-accuracy').text('85.2%'); // This would be calculated
+            $('#optimization-savings').text('₱12,450'); // This would be calculated
+        }
+    });
+}
+
+function loadDemandForecastChart() {
+    // Sample data - in real implementation, this would come from API
+    const ctx = document.getElementById('demandForecastChart').getContext('2d');
+    window.demandForecastChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6', 'Week 7', 'Week 8'],
+            datasets: [{
+                label: 'Historical Demand',
+                data: [120, 135, 150, 140, 160, 155, 170, 165],
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1
+            }, {
+                label: 'Forecasted Demand',
+                data: [null, null, null, null, null, null, 175, 180],
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Demand Forecast Trends'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Quantity'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function loadAccuracyChart() {
+    const ctx = document.getElementById('accuracyChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Excellent (<10%)', 'Good (10-20%)', 'Fair (20-30%)', 'Poor (>30%)'],
+            datasets: [{
+                data: [45, 30, 20, 5],
+                backgroundColor: [
+                    'rgb(40, 167, 69)',
+                    'rgb(255, 193, 7)',
+                    'rgb(255, 152, 0)',
+                    'rgb(220, 53, 69)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Forecast Accuracy Distribution'
+                }
+            }
+        }
+    });
+}
+
+function loadMedicines() {
+    $.ajax({
+        url: '/inventory/api/medicines/',
+        method: 'GET',
+        success: function(data) {
+            const select = $('#medicineSelect');
+            select.empty().append('<option value="">Choose a medicine...</option>');
+            data.medicines.forEach(function(medicine) {
+                select.append(`<option value="${medicine.id}">${medicine.name}</option>`);
+            });
+        }
+    });
+}
+
+function loadAnalyticsMedicines() {
+    $.ajax({
+        url: '/inventory/api/medicines/',
+        method: 'GET',
+        success: function(data) {
+            const select = $('#medicineAnalyticsSelect');
+            select.empty().append('<option value="">All Medicines (General Analytics)</option>');
+            data.medicines.forEach(function(medicine) {
+                select.append(`<option value="${medicine.id}">${medicine.name}</option>`);
+            });
+        }
+    });
+}
+
+function loadMedicineAnalytics() {
+    const medicineId = $('#medicineAnalyticsSelect').val();
+    
+    if (medicineId) {
+        // Load analytics for specific medicine
+        loadSpecificMedicineAnalytics(medicineId);
+    } else {
+        // Load general analytics
+        loadGeneralAnalytics();
+    }
+}
+
+function loadSpecificMedicineAnalytics(medicineId) {
+    // Update chart title
+    const medicineName = $('#medicineAnalyticsSelect option:selected').text();
+    $('#chartTitle').text(`Analytics for ${medicineName}`);
+    
+    // Load sales trends for specific medicine
+    $.ajax({
+        url: `/analytics/api/sales-trends/${medicineId}/`,
+        method: 'GET',
+        success: function(data) {
+            updateDemandForecastChart(data);
+        },
+        error: function() {
+            showAlert('warning', 'No analytics data available for this medicine');
+        }
+    });
+    
+    // Load inventory optimization for specific medicine
+    $.ajax({
+        url: `/analytics/api/inventory-optimization/${medicineId}/`,
+        method: 'GET',
+        success: function(data) {
+            updateInventoryOptimization(data);
+        }
+    });
+}
+
+function loadGeneralAnalytics() {
+    // Reset to general analytics
+    $('#chartTitle').text('Demand Forecast Trends');
+    loadDemandForecastChart();
+    loadAccuracyChart();
+}
+
+function updateDemandForecastChart(data) {
+    console.log('Updating chart with data:', data);
+    
+    // Validate data structure
+    if (!data) {
+        console.error('No data provided to updateDemandForecastChart');
+        return;
+    }
+    
+    // Destroy existing chart
+    if (window.demandForecastChart) {
+        window.demandForecastChart.destroy();
+    }
+    
+    const ctx = document.getElementById('demandForecastChart').getContext('2d');
+    
+    // Prepare data arrays with proper null handling for forecast
+    const historicalData = data.historical ? data.historical.values : [];
+    const forecastData = data.forecast ? data.forecast.values : [];
+    
+    console.log('Historical data length:', historicalData.length);
+    console.log('Forecast data length:', forecastData.length);
+    
+    // Create combined data array with nulls for forecast periods in historical data
+    const combinedHistoricalData = [...historicalData];
+    const combinedForecastData = [...Array(historicalData.length).fill(null), ...forecastData];
+    
+    // Use provided labels or fallback to generic ones
+    const labels = data.labels || data.forecast?.labels || ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6', 'Week 7', 'Week 8'];
+    
+    console.log('Labels length:', labels.length);
+    console.log('Combined historical data length:', combinedHistoricalData.length);
+    console.log('Combined forecast data length:', combinedForecastData.length);
+    
+    window.demandForecastChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Historical Demand',
+                data: combinedHistoricalData,
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }, {
+                label: 'Forecasted Demand',
+                data: combinedForecastData,
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                tension: 0.1,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                borderDash: [5, 5]  // Dashed line for forecast
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Medicine Demand Forecast'
+                },
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            return labels[tooltipItems[0].dataIndex] || 'Unknown Period';
+                        },
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y.toFixed(2) + ' units';
+                            }
+                            return label;
+                        }
+                    }
+                },
+                zoom: {
+                    zoom: {
+                        wheel: {
+                            enabled: true,
+                            speed: 0.1
+                        },
+                        pinch: {
+                            enabled: true
+                        },
+                        mode: 'x',
+                        drag: {
+                            enabled: true,
+                            backgroundColor: 'rgba(54, 162, 235, 0.3)',
+                            borderColor: 'rgba(54, 162, 235, 0.8)',
+                            borderWidth: 1
+                        }
+                    },
+                    pan: {
+                        enabled: true,
+                        mode: 'x',
+                        modifierKey: 'ctrl'
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time Period'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 0
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Quantity'
+                    }
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            }
+        }
+    });
+}
+
+// Zoom control functions
+function setupZoomControls() {
+    $('#zoomInBtn').on('click', function() {
+        if (window.demandForecastChart) {
+            window.demandForecastChart.zoom(1.1);
+        }
+    });
+    
+    $('#zoomOutBtn').on('click', function() {
+        if (window.demandForecastChart) {
+            window.demandForecastChart.zoom(0.9);
+        }
+    });
+    
+    $('#resetZoomBtn').on('click', function() {
+        if (window.demandForecastChart) {
+            window.demandForecastChart.resetZoom();
+        }
+    });
+    
+    $('#panBtn').on('click', function() {
+        if (window.demandForecastChart) {
+            // Toggle pan mode
+            const isPanMode = $(this).hasClass('active');
+            if (isPanMode) {
+                $(this).removeClass('active').removeClass('btn-info').addClass('btn-outline-info');
+                window.demandForecastChart.options.plugins.zoom.pan.enabled = false;
+            } else {
+                $(this).addClass('active').removeClass('btn-outline-info').addClass('btn-info');
+                window.demandForecastChart.options.plugins.zoom.pan.enabled = true;
+            }
+            window.demandForecastChart.update();
+        }
+    });
+}
+
+function updateInventoryOptimization(data) {
+    // Update metrics with medicine-specific data
+    if (data.reorder_point) {
+        $('#low-stock-items').text(data.current_stock);
+    }
+    if (data.cost_savings) {
+        $('#optimization-savings').text(`₱${data.cost_savings.toLocaleString()}`);
+    }
+}
+
+
+function showAlert(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 
+                     type === 'warning' ? 'alert-warning' : 'alert-danger';
+    
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Remove existing alerts
+    $('.alert').remove();
+    
+    // Add new alert
+    $('.row').first().before(alertHtml);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        $('.alert').fadeOut();
+    }, 5000);
+}
+
+function deleteForecast(forecastId, medicineName) {
+    // Show confirmation dialog
+    if (confirm(`Are you sure you want to delete the forecast for ${medicineName}?\n\nThis action cannot be undone.`)) {
+        // Show loading state
+        const deleteBtn = event.target.closest('button');
+        const originalContent = deleteBtn.innerHTML;
+        deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        deleteBtn.disabled = true;
+        
+        console.log(`Attempting to delete forecast ID: ${forecastId}`);
+        
+        // Get CSRF token
+        const csrfToken = $('[name=csrfmiddlewaretoken]').val() || 
+                         $('meta[name=csrf-token]').attr('content') ||
+                         $('input[name=csrfmiddlewaretoken]').val();
+        
+        console.log('CSRF Token:', csrfToken);
+        
+        $.ajax({
+            url: `/analytics/api/forecast/${forecastId}/delete/`,
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json'
+            },
+            success: function(response) {
+                console.log('Delete successful:', response);
+                showAlert('success', response.message);
+                
+                // Remove the row from the table with animation
+                const row = deleteBtn.closest('tr');
+                console.log('Removing row:', row);
+                
+                row.fadeOut(300, function() {
+                    $(this).remove();
+                    console.log('Row removed from table');
+                    
+                    // Check if table is empty and add empty message if needed
+                    const remainingRows = $('#recent-forecasts-table tr').length;
+                    console.log('Remaining rows:', remainingRows);
+                    
+                    if (remainingRows === 0) {
+                        $('#recent-forecasts-table').append(`
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">No forecasts available</td>
+                            </tr>
+                        `);
+                    }
+                });
+                
+                // Refresh the existing forecasts dropdown
+                loadExistingForecasts();
+                
+                // Reset button state
+                deleteBtn.innerHTML = originalContent;
+                deleteBtn.disabled = false;
+            },
+            error: function(xhr) {
+                console.error('Delete failed:', xhr);
+                const response = xhr.responseJSON;
+                const errorMessage = response?.error || `HTTP ${xhr.status}: ${xhr.statusText}`;
+                showAlert('error', 'Error deleting forecast: ' + errorMessage);
+                
+                // Reset button state
+                deleteBtn.innerHTML = originalContent;
+                deleteBtn.disabled = false;
+            }
+        });
+    }
+}
+
+function viewForecastDetails(forecastId) {
+    // Show forecast details modal or navigate to details page
+    showAlert('info', `Viewing details for forecast ID: ${forecastId}`);
+    // TODO: Implement detailed forecast view
+}
+
+function refreshRecentForecasts() {
+    // Refresh the recent forecasts table without page reload
+    $.ajax({
+        url: '/analytics/api/forecasts/',
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val(),
+            'Content-Type': 'application/json'
+        },
+        success: function(response) {
+            const forecasts = response.forecasts || [];
+            const tableBody = $('#recent-forecasts-table');
+            
+            // Clear existing rows
+            tableBody.empty();
+            
+            if (forecasts.length === 0) {
+                tableBody.append(`
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">No forecasts available</td>
+                    </tr>
+                `);
+            } else {
+                // Add forecast rows
+                forecasts.slice(0, 10).forEach(forecast => { // Show only recent 10
+                    const accuracyClass = forecast.accuracy < 20 ? 'success' : 
+                                        forecast.accuracy < 40 ? 'warning' : 'danger';
+                    
+                    tableBody.append(`
+                        <tr>
+                            <td>${forecast.medicine_name}</td>
+                            <td>${forecast.forecast_period.charAt(0).toUpperCase() + forecast.forecast_period.slice(1)}</td>
+                            <td>
+                                <span class="badge bg-${accuracyClass}">
+                                    ${forecast.accuracy.toFixed(1)}%
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-success">Active</span>
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewForecastDetails(${forecast.id})" title="View Details">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteForecast(${forecast.id}, '${forecast.medicine_name}')" title="Delete Forecast">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `);
+                });
+            }
+        },
+        error: function(xhr) {
+            console.error('Error refreshing forecasts:', xhr.responseText);
+        }
+    });
+}
+
+function generateForecast() {
+    const medicineId = $('#medicineSelect').val();
+    const forecastPeriod = $('#forecastPeriod').val();
+    const forecastHorizon = parseInt($('#forecastHorizon').val());
+    
+    if (!medicineId) {
+        showAlert('warning', 'Please select a medicine');
+        return;
+    }
+    
+    // Show loading state
+    $('#generateForecastBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Generating...');
+    
+    $.ajax({
+        url: '/analytics/api/forecast/generate/',
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val(),
+            'Content-Type': 'application/json'
+        },
+        data: JSON.stringify({
+            medicine_id: medicineId,
+            forecast_period: forecastPeriod,
+            forecast_horizon: forecastHorizon
+        }),
+        success: function(response) {
+            // Update chart with new data
+            const chartData = {
+                labels: response.labels,
+                historical: response.historical_data,
+                forecast: {
+                    values: response.forecasted_demand,
+                    labels: response.forecast_labels
+                }
+            };
+            
+            updateDemandForecastChart(chartData);
+            
+            // Update chart title
+            $('#chartTitle').text(`Analytics for ${response.medicine_name}`);
+            
+            // Show success message
+            showAlert('success', `Forecast generated successfully for ${response.medicine_name}`);
+            
+            // Refresh the existing forecasts dropdown
+            loadExistingForecasts();
+            
+            // Refresh the recent forecasts table
+            refreshRecentForecasts();
+            
+            // Close modal
+            $('#forecastModal').modal('hide');
+        },
+        error: function(xhr) {
+            const response = xhr.responseJSON;
+            if (response && response.error === 'insufficient_data') {
+                showAlert('warning', response.message);
+            } else {
+                showAlert('error', 'Error generating forecast: ' + (response?.error || 'Unknown error'));
+            }
+        },
+        complete: function() {
+            // Reset button state
+            $('#generateForecastBtn').prop('disabled', false).html('<i class="fas fa-plus me-1"></i>Generate Forecast');
+        }
+    });
+}
+
+function generateBulkForecasts() {
+    // Implementation for bulk forecast generation
+    showAlert('info', 'Bulk forecast generation feature coming soon!');
+}
+
+function optimizeInventory() {
+    // Implementation for inventory optimization
+    showAlert('info', 'Inventory optimization feature coming soon!');
+}
+
+function viewReports() {
+    window.location.href = '/oncare-admin/reports/';
+}
+
+function exportData() {
+    // Implementation for data export
+    showAlert('info', 'Data export feature coming soon!');
+}
+
+// Forecast Extension Functions
+function loadExistingForecasts() {
+    $.ajax({
+        url: '/analytics/api/forecasts/',
+        method: 'GET',
+        success: function(data) {
+            const select = $('#existingForecastSelect');
+            select.empty().append('<option value="">Choose a forecast to extend...</option>');
+            data.forecasts.forEach(function(forecast) {
+                const createdDate = new Date(forecast.created_at).toLocaleDateString();
+                select.append(`<option value="${forecast.id}">${forecast.medicine_name} - ${forecast.forecast_period} (${createdDate})</option>`);
+            });
+        },
+        error: function() {
+            showAlert('warning', 'Failed to load existing forecasts');
+        }
+    });
+}
+
+function extendForecast() {
+    const forecastId = $('#existingForecastSelect').val();
+    const extendHorizon = $('#extendHorizon').val();
+    const extendPeriod = $('#extendPeriod').val();
+    
+    if (!forecastId) {
+        showAlert('warning', 'Please select a forecast to extend');
+        return;
+    }
+    
+    if (!extendHorizon || extendHorizon < 1) {
+        showAlert('warning', 'Please enter a valid extension period');
+        return;
+    }
+    
+    // Validate horizon limits based on period type
+    const maxLimits = {
+        'daily': 30,
+        'weekly': 52,
+        'monthly': 24
+    };
+    
+    if (parseInt(extendHorizon) > maxLimits[extendPeriod]) {
+        showAlert('warning', `Maximum extension for ${extendPeriod} forecasts is ${maxLimits[extendPeriod]} periods`);
+        return;
+    }
+    
+    $.ajax({
+        url: '/analytics/api/forecast/extend/',
+        method: 'POST',
+        data: {
+            'forecast_id': forecastId,
+            'extend_horizon': extendHorizon,
+            'extend_period': extendPeriod,
+            'csrfmiddlewaretoken': $('[name=csrfmiddlewaretoken]').val()
+        },
+        success: function(response) {
+            showAlert('success', `Forecast extended successfully! New horizon: ${response.new_horizon} periods`);
+            
+            // Update the chart with extended forecast data
+            if (response.forecast_data) {
+                console.log('Extended forecast data:', response.forecast_data);
+                
+                // Use the data directly as it already has the correct structure
+                updateDemandForecastChart(response.forecast_data);
+                
+                // Update chart title
+                $('#chartTitle').text(`Analytics for ${response.forecast_data.medicine_name}`);
+            }
+            
+            loadExistingForecasts(); // Refresh the forecast list
+            refreshRecentForecasts(); // Refresh the recent forecasts table
+        },
+        error: function(xhr) {
+            console.error('Extend forecast error:', xhr);
+            const response = xhr.responseJSON;
+            if (response && response.error === 'insufficient_data') {
+                showInsufficientDataAlert(response);
+            } else {
+                const error = response?.error || 'Failed to extend forecast';
+                showAlert('danger', error);
+            }
+        },
+        complete: function() {
+            console.log('Extend forecast request completed');
+        }
+    });
+}
+
+function refreshForecasts() {
+    // Reload dashboard data and charts
+    loadDashboardData();
+    loadDemandForecastChart();
+    loadAccuracyChart();
+    showAlert('info', 'Forecasts refreshed successfully');
+}
+
+function viewForecastHistory() {
+    // Implementation for viewing forecast history
+    showAlert('info', 'Forecast history feature coming soon!');
+}
+
+// Enhanced forecast generation with dynamic horizon limits
+function updateHorizonLimits() {
+    const period = $('#forecastPeriod').val();
+    const horizonInput = $('#forecastHorizon');
+    
+    const maxLimits = {
+        'daily': 30,
+        'weekly': 52,
+        'monthly': 24
+    };
+    
+    horizonInput.attr('max', maxLimits[period]);
+    
+    // Update the help text
+    const helpText = $(horizonInput).next('.form-text');
+    helpText.html(`
+        <i class="fas fa-info-circle me-1"></i>
+        Extended forecasting: Daily (max 30), Weekly (max 52), Monthly (max 24)
+    `);
+}
+
+function showInsufficientDataAlert(response) {
+    const alertHtml = `
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <div class="d-flex align-items-start">
+                <i class="fas fa-exclamation-triangle me-3 mt-1"></i>
+                <div class="flex-grow-1">
+                    <h6 class="alert-heading mb-2">
+                        <i class="fas fa-chart-line me-2"></i>Insufficient Data for Forecasting
+                    </h6>
+                    <p class="mb-2"><strong>Medicine:</strong> ${response.medicine_name}</p>
+                    <p class="mb-2"><strong>Issue:</strong> ${response.message}</p>
+                    <p class="mb-2"><strong>Required:</strong> At least ${response.required_data_points} sales data points</p>
+                    <p class="mb-2"><strong>Suggestion:</strong> ${response.suggestion}</p>
+                    <hr class="my-2">
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary" onclick="viewMedicineSales('${response.medicine_name}')">
+                            <i class="fas fa-eye me-1"></i>View Sales History
+                        </button>
+                        <button class="btn btn-sm btn-outline-info" onclick="showDataRequirements()">
+                            <i class="fas fa-info-circle me-1"></i>Data Requirements
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Remove existing alerts
+    $('.alert').remove();
+    
+    // Add new alert
+    $('.row:first').before(alertHtml);
+    
+    // Don't auto-dismiss this important alert
+}
+
+function viewMedicineSales(medicineName) {
+    // Implementation for viewing medicine sales history
+    showAlert('info', `Viewing sales history for ${medicineName} - Feature coming soon!`);
+}
+
+function showDataRequirements() {
+    const requirementsHtml = `
+        <div class="alert alert-info alert-dismissible fade show" role="alert">
+            <h6 class="alert-heading">
+                <i class="fas fa-info-circle me-2"></i>Forecast Data Requirements
+            </h6>
+            <ul class="mb-0">
+                <li><strong>Minimum Data Points:</strong> At least 30 sales records</li>
+                <li><strong>Time Period:</strong> Preferably 6+ months of sales history</li>
+                <li><strong>Data Quality:</strong> Consistent sales data without major gaps</li>
+                <li><strong>Seasonality:</strong> Full seasonal cycles for better accuracy</li>
+            </ul>
+            <hr class="my-2">
+            <p class="mb-0"><strong>Tip:</strong> Medicines with regular sales patterns provide more accurate forecasts.</p>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Remove existing alerts
+    $('.alert').remove();
+    
+    // Add new alert
+    $('.row:first').before(requirementsHtml);
+}
+
+function showAlert(type, message) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Remove existing alerts
+    $('.alert').remove();
+    
+    // Add new alert
+    $('.row:first').before(alertHtml);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(function() {
+        $('.alert').fadeOut();
+    }, 5000);
+}
+</script>
+{% endblock %}
+
+

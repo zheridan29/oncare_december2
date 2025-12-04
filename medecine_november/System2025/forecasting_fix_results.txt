@@ -1,0 +1,15 @@
+=== Forecasting Fix Verification ===
+Weekly Data:
+  Total periods: 261
+  Non-zero periods: 0 (0.0%)
+  Min quantity: 0.0
+  Max quantity: 0.0
+  Mean quantity: 0.00
+
+Monthly Data:
+  Total periods: 59
+  Non-zero periods: 0 (0.0%)
+  Min quantity: 0.0
+  Max quantity: 0.0
+  Mean quantity: 0.00
+

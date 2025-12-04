@@ -1,0 +1,75 @@
+{% load static %}
+
+<!-- Notifications Widget -->
+<div class="card mb-4" id="notifications-widget">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="fas fa-bell me-2"></i>Recent Notifications
+            {% if unread_notifications_count > 0 %}
+                <span class="badge bg-danger ms-2" id="widget-notification-count">{{ unread_notifications_count }}</span>
+            {% endif %}
+        </h5>
+        <div class="btn-group">
+            <button type="button" class="btn btn-sm btn-outline-danger" id="clear-all-notifications-btn" title="Mark all as read" style="{% if not notifications %}display:none;{% endif %}">
+                <i class="fas fa-check-double me-1"></i>Clear All
+            </button>
+            <a href="{% url 'common:notification_list' %}" class="btn btn-sm btn-outline-primary">
+                View All
+            </a>
+        </div>
+    </div>
+    <div class="card-body" id="notifications-container">
+        {% if notifications %}
+            <div class="list-group list-group-flush">
+                {% for notification in notifications %}
+                <div class="list-group-item {% if not notification.is_read %}border-start border-3 border-{% if notification.priority == 'urgent' %}danger{% elif notification.priority == 'high' %}warning{% else %}info{% endif %}{% endif %} px-3 py-2">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center mb-1">
+                                {% if notification.notification_type == 'order_update' %}
+                                    <i class="fas fa-shopping-cart text-primary me-2"></i>
+                                {% elif notification.notification_type == 'stock_alert' %}
+                                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                                {% elif notification.notification_type == 'prescription_ready' %}
+                                    <i class="fas fa-file-medical text-success me-2"></i>
+                                {% elif notification.notification_type == 'payment_confirmation' %}
+                                    <i class="fas fa-credit-card text-info me-2"></i>
+                                {% else %}
+                                    <i class="fas fa-info-circle text-secondary me-2"></i>
+                                {% endif %}
+                                
+                                <strong class="me-2">{{ notification.title }}</strong>
+                                
+                                {% if not notification.is_read %}
+                                    <span class="badge bg-primary">New</span>
+                                {% endif %}
+                                
+                                {% if notification.priority == 'urgent' %}
+                                    <span class="badge bg-danger ms-1">Urgent</span>
+                                {% elif notification.priority == 'high' %}
+                                    <span class="badge bg-warning ms-1">High</span>
+                                {% endif %}
+                            </div>
+                            <p class="text-muted small mb-1">{{ notification.message }}</p>
+                            <small class="text-muted">
+                                <i class="fas fa-clock me-1"></i>{{ notification.created_at|timesince }} ago
+                            </small>
+                        </div>
+                        {% if notification.action_url %}
+                            <a href="{{ notification.action_url }}" class="btn btn-sm btn-outline-primary ms-2">
+                                <i class="fas fa-arrow-right"></i>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="text-center py-4 text-muted">
+                <i class="fas fa-bell-slash fa-3x mb-3"></i>
+                <p>No notifications at this time</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+

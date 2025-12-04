@@ -1,0 +1,155 @@
+erDiagram
+    %% User Roles and Profiles
+    USER ||--o| SALESREPPROFILE : "has (if sales_rep)"
+    USER ||--o| PHARMACISTADMINPROFILE : "has (if pharmacist_admin)"
+    
+    %% Sales Rep Ordering Process
+    USER ||--o| CART : "has (sales_rep only)"
+    CART ||--o{ CARTITEM : "contains"
+    CARTITEM }o--|| MEDICINE : "references"
+    USER ||--o{ ORDER : "creates (sales_rep)"
+    ORDER ||--o{ ORDERITEM : "contains"
+    ORDERITEM }o--|| MEDICINE : "references"
+    ORDER ||--o{ ORDERSTATUSHISTORY : "tracks"
+    ORDER }o--o| USER : "verified_by (pharmacist/admin)"
+    
+    %% Inventory Management (Pharmacist/Admin)
+    USER ||--o{ STOCKMOVEMENT : "creates (pharmacist/admin)"
+    USER ||--o{ REORDERALERT : "processes (pharmacist/admin)"
+    MEDICINE ||--o{ STOCKMOVEMENT : "has"
+    MEDICINE ||--o{ REORDERALERT : "has"
+    
+    %% Medicine Catalog
+    MEDICINE }o--|| CATEGORY : "belongs_to"
+    MEDICINE }o--|| MANUFACTURER : "from"
+    
+    %% User Entity
+    USER {
+        int id PK
+        string username
+        string email
+        string role "sales_rep|pharmacist_admin|admin"
+        string phone_number
+        datetime created_at
+    }
+    
+    %% User Profiles
+    SALESREPPROFILE {
+        int id PK
+        int user_id FK
+        string employee_id UK
+        string territory
+        decimal commission_rate
+        boolean is_active
+    }
+    
+    PHARMACISTADMINPROFILE {
+        int id PK
+        int user_id FK
+        string license_number UK
+        date license_expiry
+        string specialization
+        boolean is_available
+    }
+    
+    %% Ordering Process - Cart
+    CART {
+        int id PK
+        int sales_rep_id FK
+        datetime created_at
+        datetime updated_at
+    }
+    
+    CARTITEM {
+        int id PK
+        int cart_id FK
+        int medicine_id FK
+        int quantity
+        datetime added_at
+    }
+    
+    %% Ordering Process - Order
+    ORDER {
+        int id PK
+        int sales_rep_id FK "created by"
+        string order_number UK
+        string customer_name
+        string status "pending|confirmed|processing|delivered"
+        string payment_status
+        decimal total_amount
+        boolean prescription_required
+        int verified_by_id FK "pharmacist/admin"
+        datetime created_at
+        datetime confirmed_at
+    }
+    
+    ORDERITEM {
+        int id PK
+        int order_id FK
+        int medicine_id FK
+        int quantity
+        decimal unit_price
+        decimal total_price
+    }
+    
+    ORDERSTATUSHISTORY {
+        int id PK
+        int order_id FK
+        int changed_by FK
+        string old_status
+        string new_status
+        datetime changed_at
+    }
+    
+    %% Inventory Management
+    MEDICINE {
+        int id PK
+        int category_id FK
+        int manufacturer_id FK
+        string name
+        decimal unit_price
+        int current_stock
+        int reorder_point
+        int minimum_stock_level
+        boolean is_active
+        boolean requires_prescription
+    }
+    
+    STOCKMOVEMENT {
+        int id PK
+        int medicine_id FK
+        int created_by FK "pharmacist/admin"
+        string movement_type "in|out|adjustment|return"
+        int quantity
+        string reference_number
+        text notes
+        datetime created_at
+    }
+    
+    REORDERALERT {
+        int id PK
+        int medicine_id FK
+        int processed_by FK "pharmacist/admin"
+        int current_stock
+        string priority
+        boolean is_processed
+        datetime created_at
+        datetime processed_at
+    }
+    
+    %% Medicine Catalog
+    CATEGORY {
+        int id PK
+        int parent_category_id FK
+        string name UK
+        text description
+    }
+    
+    MANUFACTURER {
+        int id PK
+        string name UK
+        string country
+        string contact_email
+    }
+
+

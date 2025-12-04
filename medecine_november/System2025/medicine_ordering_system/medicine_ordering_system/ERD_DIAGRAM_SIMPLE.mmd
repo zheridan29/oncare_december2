@@ -1,0 +1,49 @@
+erDiagram
+    USER ||--o{ ORDER : "creates"
+    ORDER ||--o{ ORDERITEM : "contains"
+    ORDERITEM }o--|| MEDICINE : "references"
+    MEDICINE }o--|| CATEGORY : "belongs_to"
+    MEDICINE }o--|| MANUFACTURER : "from"
+    
+    USER {
+        int id PK
+        string username
+        string role
+        string email
+    }
+    
+    ORDER {
+        int id PK
+        int sales_rep_id FK
+        string order_number UK
+        string status
+        decimal total_amount
+    }
+    
+    ORDERITEM {
+        int id PK
+        int order_id FK
+        int medicine_id FK
+        int quantity
+        decimal unit_price
+    }
+    
+    MEDICINE {
+        int id PK
+        int category_id FK
+        int manufacturer_id FK
+        string name
+        decimal unit_price
+        int current_stock
+    }
+    
+    CATEGORY {
+        int id PK
+        string name UK
+    }
+    
+    MANUFACTURER {
+        int id PK
+        string name UK
+    }
+
