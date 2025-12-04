@@ -51,7 +51,7 @@
                         <select name="medicine" id="medicine" class="form-select">
                             <option value="">All Medicines</option>
                             {% for medicine in medicines %}
-                            <option value="{{ medicine.id }}" {% if current_medicine == medicine.id|stringformat:"s" %}selected{% endif %}>
+                            <option value="{{ medicine.id }}" {% if current_medicine == medicine.id|stringformat:"d" %}selected{% endif %}>
                                 {{ medicine.name }} ({{ medicine.strength }})
                             </option>
                             {% endfor %}
@@ -163,10 +163,10 @@
                         <ul class="pagination justify-content-center">
                             {% if page_obj.has_previous %}
                                 <li class="page-item">
-                                    <a class="page-link" href="?page=1{% if current_status %}&status={{ current_status }}{% endif %}{% if current_payment_status %}&payment_status={{ current_payment_status }}{% endif %}{% if current_medicine %}&medicine={{ current_medicine }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}">First</a>
+                                    <a class="page-link" href="?{% if query_string %}{{ query_string }}&{% endif %}page=1">First</a>
                                 </li>
                                 <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_payment_status %}&payment_status={{ current_payment_status }}{% endif %}{% if current_medicine %}&medicine={{ current_medicine }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}">Previous</a>
+                                    <a class="page-link" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
                                 </li>
                             {% endif %}
                             
@@ -178,10 +178,10 @@
                             
                             {% if page_obj.has_next %}
                                 <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_payment_status %}&payment_status={{ current_payment_status }}{% endif %}{% if current_medicine %}&medicine={{ current_medicine }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}">Next</a>
+                                    <a class="page-link" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
                                 </li>
                                 <li class="page-item">
-                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_payment_status %}&payment_status={{ current_payment_status }}{% endif %}{% if current_medicine %}&medicine={{ current_medicine }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}">Last</a>
+                                    <a class="page-link" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.paginator.num_pages }}">Last</a>
                                 </li>
                             {% endif %}
                         </ul>

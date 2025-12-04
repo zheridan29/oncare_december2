@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.urls import reverse_lazy, reverse
 from django.contrib import messages
-from django.db.models import Q, Sum, F
+from django.db.models import Q, Sum, F, Case, When, IntegerField
 from django.http import JsonResponse
 from django.core.paginator import Paginator
 from django.utils import timezone
@@ -41,9 +41,9 @@ class OrderDashboardView(LoginRequiredMixin, TemplateView):
         cart, created = Cart.objects.get_or_create(sales_rep=user)
         cart_items = cart.items.all()
         
-        # Get notifications for current user
+        # Get notifications for current user (only unread for dashboard widget)
         from common.services import NotificationService
-        notifications = NotificationService.get_recent_notifications(user, limit=5)
+        notifications = NotificationService.get_recent_notifications(user, limit=5, unread_only=True)
         unread_notifications_count = NotificationService.get_unread_count(user)
         
         context.update({
@@ -72,10 +72,134 @@ class OrderListView(LoginRequiredMixin, ListView):
         user = self.request.user
         if user.is_pharmacist_admin or user.is_admin:
             # Pharmacist/Admin and Admin can see all orders from sales reps
-            return Order.objects.all().order_by('-created_at')
+            queryset = Order.objects.all()
+            
+            # Apply filters if provided
+            status_filter = self.request.GET.get('status')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            
+            date_from = self.request.GET.get('date_from')
+            if date_from:
+                try:
+                    date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                    queryset = queryset.filter(created_at__date__gte=date_from_obj)
+                except ValueError:
+                    pass
+            
+            date_to = self.request.GET.get('date_to')
+            if date_to:
+                try:
+                    date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                    queryset = queryset.filter(created_at__date__lte=date_to_obj)
+                except ValueError:
+                    pass
+            
+            return queryset.order_by('-created_at')
         else:
-            # Sales reps can only see their own orders
-            return Order.objects.filter(sales_rep=user).order_by('-created_at')
+            # Sales reps can only see their own orders - prioritize pending orders first
+            queryset = Order.objects.filter(sales_rep=user)
+            
+            # Apply status filter if provided
+            status_filter = self.request.GET.get('status')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            
+            # Apply date range filters if provided
+            date_from = self.request.GET.get('date_from')
+            if date_from:
+                try:
+                    date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                    queryset = queryset.filter(created_at__date__gte=date_from_obj)
+                except ValueError:
+                    pass
+            
+            date_to = self.request.GET.get('date_to')
+            if date_to:
+                try:
+                    date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                    queryset = queryset.filter(created_at__date__lte=date_to_obj)
+                except ValueError:
+                    pass
+            
+            # Only apply priority ordering if no status filter is applied
+            if not status_filter:
+                queryset = queryset.annotate(
+                    status_priority=Case(
+                        When(status='pending', then=1),
+                        When(status='processing', then=2),
+                        When(status='confirmed', then=3),
+                        When(status='ready_for_pickup', then=4),
+                        When(status='shipped', then=5),
+                        default=6,
+                        output_field=IntegerField()
+                    )
+                ).order_by('status_priority', '-created_at')
+            else:
+                # If status filter is applied, just order by creation date
+                queryset = queryset.order_by('-created_at')
+            
+            return queryset
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        from urllib.parse import urlencode
+        
+        # Build query string for pagination (excluding 'page' parameter)
+        query_params = {}
+        status_filter = self.request.GET.get('status')
+        if status_filter:
+            query_params['status'] = status_filter
+        
+        date_from = self.request.GET.get('date_from')
+        if date_from:
+            query_params['date_from'] = date_from
+        
+        date_to = self.request.GET.get('date_to')
+        if date_to:
+            query_params['date_to'] = date_to
+        
+        context['query_string'] = urlencode(query_params)
+        context['current_status'] = status_filter or ''
+        context['current_date_from'] = date_from or ''
+        context['current_date_to'] = date_to or ''
+        
+        # Add dashboard statistics for sales reps only
+        user = self.request.user
+        if not (user.is_pharmacist_admin or user.is_admin):
+            # Get all orders for this sales rep (before filters) for statistics
+            user_orders = Order.objects.filter(sales_rep=user)
+            
+            # Order statistics
+            context['total_orders'] = user_orders.count()
+            context['pending_orders'] = user_orders.filter(status='pending').count()
+            context['processing_orders'] = user_orders.filter(status='processing').count()
+            context['confirmed_orders'] = user_orders.filter(status='confirmed').count()
+            context['ready_orders'] = user_orders.filter(status='ready_for_pickup').count()
+            context['shipped_orders'] = user_orders.filter(status='shipped').count()
+            context['delivered_orders'] = user_orders.filter(status='delivered').count()
+            context['cancelled_orders'] = user_orders.filter(status='cancelled').count()
+            
+            # Calculate total revenue
+            context['total_revenue'] = user_orders.filter(
+                status='delivered',
+                payment_status='paid'
+            ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+            
+            # Orders by status breakdown
+            orders_by_status = {}
+            for status_code, status_name in Order.STATUS_CHOICES:
+                orders_by_status[status_code] = {
+                    'name': status_name,
+                    'count': user_orders.filter(status=status_code).count()
+                }
+            context['orders_by_status'] = orders_by_status
+            
+            # Payment status statistics
+            context['paid_orders'] = user_orders.filter(payment_status='paid').count()
+            context['pending_payment_orders'] = user_orders.filter(payment_status='pending').count()
+        
+        return context
 
 
 class OrderCreateView(LoginRequiredMixin, CreateView):
@@ -201,15 +325,19 @@ class OrderCreateView(LoginRequiredMixin, CreateView):
 
 
 class OrderDetailView(LoginRequiredMixin, DetailView):
-    """Order detail view - redirects to status update page"""
+    """Order detail view - redirects pharmacists/admins to status update page"""
     model = Order
     template_name = 'orders/order_detail.html'
     context_object_name = 'order'
     
     def get(self, request, *args, **kwargs):
-        """Redirect to status update page instead of showing detail"""
+        """Redirect pharmacists/admins to status update page, sales reps see detail page"""
         self.object = self.get_object()
-        return redirect('orders:order_status_update', pk=self.object.pk)
+        # Only redirect pharmacists/admins to status update page
+        if request.user.is_pharmacist_admin or request.user.is_admin:
+            return redirect('orders:order_status_update', pk=self.object.pk)
+        # Sales reps see the regular detail page
+        return super().get(request, *args, **kwargs)
     
     def get_queryset(self):
         user = self.request.user
@@ -233,8 +361,31 @@ class OrderEditView(LoginRequiredMixin, UpdateView):
             # Pharmacist/Admin and Admin can edit any order
             return Order.objects.all()
         else:
-            # Sales reps can only edit their own orders
-            return Order.objects.filter(sales_rep=user)
+            # Sales reps can only edit their own orders with pending status
+            return Order.objects.filter(sales_rep=user, status='pending')
+    
+    def dispatch(self, request, *args, **kwargs):
+        """Check if order can be edited - sales reps can only edit pending orders"""
+        # For sales reps, verify order status before allowing access
+        if not (request.user.is_pharmacist_admin or request.user.is_admin):
+            pk = kwargs.get('pk')
+            if pk:
+                try:
+                    # Check if the order exists and is owned by the sales rep
+                    order = Order.objects.get(pk=pk, sales_rep=request.user)
+                    # Check if order status is pending
+                    if order.status != 'pending':
+                        messages.error(
+                            request,
+                            f'You can only edit orders with "Pending" status. This order is currently "{order.get_status_display()}".'
+                        )
+                        return redirect('orders:order_detail', pk=order.pk)
+                except Order.DoesNotExist:
+                    # Order doesn't exist or doesn't belong to this sales rep
+                    messages.error(request, 'Order not found or you do not have permission to edit this order.')
+                    return redirect('orders:order_list')
+        
+        return super().dispatch(request, *args, **kwargs)
     
     def get_success_url(self):
         return reverse('orders:order_detail', kwargs={'pk': self.object.pk})
@@ -662,7 +813,11 @@ class PharmacistOrderListView(LoginRequiredMixin, UserPassesTestMixin, ListView)
         # Filter by medicine
         medicine_filter = self.request.GET.get('medicine')
         if medicine_filter:
-            queryset = queryset.filter(items__medicine_id=medicine_filter).distinct()
+            try:
+                medicine_id = int(medicine_filter)
+                queryset = queryset.filter(items__medicine_id=medicine_id).distinct()
+            except (ValueError, TypeError):
+                pass  # Invalid medicine ID, skip filter
         
         # Search by order number or customer name
         search = self.request.GET.get('search')
@@ -677,14 +832,36 @@ class PharmacistOrderListView(LoginRequiredMixin, UserPassesTestMixin, ListView)
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         from inventory.models import Medicine
+        from urllib.parse import urlencode
         
         context['status_choices'] = Order.STATUS_CHOICES
         context['payment_status_choices'] = Order.PAYMENT_STATUS_CHOICES
         context['medicines'] = Medicine.objects.filter(is_active=True).order_by('name')
-        context['current_status'] = self.request.GET.get('status', '')
-        context['current_payment_status'] = self.request.GET.get('payment_status', '')
-        context['current_medicine'] = self.request.GET.get('medicine', '')
-        context['search_query'] = self.request.GET.get('search', '')
+        
+        # Get current filter values
+        current_status = self.request.GET.get('status', '')
+        current_payment_status = self.request.GET.get('payment_status', '')
+        current_medicine = self.request.GET.get('medicine', '')
+        search_query = self.request.GET.get('search', '')
+        
+        context['current_status'] = current_status
+        context['current_payment_status'] = current_payment_status
+        context['current_medicine'] = current_medicine
+        context['search_query'] = search_query
+        
+        # Build query string for pagination (excluding 'page' parameter)
+        query_params = {}
+        if current_status:
+            query_params['status'] = current_status
+        if current_payment_status:
+            query_params['payment_status'] = current_payment_status
+        if current_medicine:
+            query_params['medicine'] = current_medicine
+        if search_query:
+            query_params['search'] = search_query
+        
+        context['query_string'] = urlencode(query_params)
+        
         return context
 
 
@@ -738,6 +915,16 @@ class OrderStatusUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView)
                 notes=form.cleaned_data.get('internal_notes', ''),
                 changed_by=self.request.user
             )
+            
+            # Send notifications about status change
+            if old_status != self.object.status:
+                from common.services import NotificationService
+                NotificationService.notify_order_status_change(
+                    order=self.object,
+                    old_status=old_status,
+                    new_status=self.object.status,
+                    changed_by_user=self.request.user
+                )
         
         # Handle timestamps for status changes
         if self.object.status == 'confirmed' and not self.object.confirmed_at:
@@ -752,6 +939,11 @@ class OrderStatusUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView)
             from django.utils import timezone
             self.object.delivered_at = timezone.now()
             self.object.save()
+        
+        # If order is delivered and paid, mark all related notifications as read
+        if self.object.status == 'delivered' and self.object.payment_status == 'paid':
+            from common.services import NotificationService
+            NotificationService.mark_order_notifications_as_read(self.object)
         
         messages.success(self.request, f'Order status updated successfully.')
         return response
@@ -774,8 +966,18 @@ class OrderFulfillmentDashboardView(LoginRequiredMixin, UserPassesTestMixin, Tem
         ready_orders = Order.objects.filter(status='ready_for_pickup').count()
         delivered_orders = Order.objects.filter(status='delivered').count()
         
-        # Recent orders
-        recent_orders = Order.objects.all().order_by('-created_at')[:10]
+        # Recent orders - prioritize pending orders first, then order by creation date
+        recent_orders = Order.objects.annotate(
+            status_priority=Case(
+                When(status='pending', then=1),
+                When(status='processing', then=2),
+                When(status='confirmed', then=3),
+                When(status='ready_for_pickup', then=4),
+                When(status='shipped', then=5),
+                default=6,
+                output_field=IntegerField()
+            )
+        ).order_by('status_priority', '-created_at')[:10]
         
         # Orders by status
         orders_by_status = {}
@@ -796,3 +998,194 @@ class OrderFulfillmentDashboardView(LoginRequiredMixin, UserPassesTestMixin, Tem
         })
         
         return context
+
+
+class PharmacistDashboardAPIView(APIView):
+    """API endpoint for pharmacist dashboard statistics - real-time updates"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Return dashboard statistics for real-time updates"""
+        if not (request.user.is_pharmacist_admin or request.user.is_admin):
+            return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Order statistics
+        total_orders = Order.objects.count()
+        pending_orders = Order.objects.filter(status='pending').count()
+        processing_orders = Order.objects.filter(status='processing').count()
+        ready_orders = Order.objects.filter(status='ready_for_pickup').count()
+        delivered_orders = Order.objects.filter(status='delivered').count()
+        cancelled_orders = Order.objects.filter(status='cancelled').count()
+        
+        # Orders by status
+        orders_by_status = {}
+        for status_code, status_name in Order.STATUS_CHOICES:
+            orders_by_status[status_code] = {
+                'name': status_name,
+                'count': Order.objects.filter(status=status_code).count()
+            }
+        
+        # Recent orders - prioritize pending orders first
+        recent_orders = Order.objects.annotate(
+            status_priority=Case(
+                When(status='pending', then=1),
+                When(status='processing', then=2),
+                When(status='confirmed', then=3),
+                When(status='ready_for_pickup', then=4),
+                When(status='shipped', then=5),
+                default=6,
+                output_field=IntegerField()
+            )
+        ).order_by('status_priority', '-created_at')[:10]
+        
+        # Build recent orders data
+        recent_orders_data = []
+        for order in recent_orders:
+            recent_orders_data.append({
+                'id': order.id,
+                'order_number': order.order_number,
+                'customer_name': order.customer_name,
+                'status': order.status,
+                'status_display': order.get_status_display(),
+                'payment_status': order.payment_status,
+                'payment_status_display': order.get_payment_status_display(),
+                'total_amount': float(order.total_amount),
+                'created_at': order.created_at.isoformat(),
+                'created_at_display': order.created_at.strftime('%b %d, %Y %H:%M'),
+            })
+        
+        return Response({
+            'statistics': {
+                'total_orders': total_orders,
+                'pending_orders': pending_orders,
+                'processing_orders': processing_orders,
+                'ready_orders': ready_orders,
+                'delivered_orders': delivered_orders,
+                'cancelled_orders': cancelled_orders,
+            },
+            'orders_by_status': orders_by_status,
+            'recent_orders': recent_orders_data,
+        })
+
+
+class SalesRepDashboardAPIView(APIView):
+    """API endpoint for sales rep dashboard statistics - real-time updates"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Return dashboard statistics for real-time updates - sales rep's own orders only"""
+        if request.user.is_pharmacist_admin or request.user.is_admin:
+            return Response({'error': 'This endpoint is for sales representatives only'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get all orders for this sales rep
+        user_orders = Order.objects.filter(sales_rep=request.user)
+        
+        # Order statistics
+        total_orders = user_orders.count()
+        pending_orders = user_orders.filter(status='pending').count()
+        processing_orders = user_orders.filter(status='processing').count()
+        confirmed_orders = user_orders.filter(status='confirmed').count()
+        ready_orders = user_orders.filter(status='ready_for_pickup').count()
+        shipped_orders = user_orders.filter(status='shipped').count()
+        delivered_orders = user_orders.filter(status='delivered').count()
+        cancelled_orders = user_orders.filter(status='cancelled').count()
+        
+        # Calculate total revenue (delivered + paid orders)
+        from django.db.models import Sum
+        total_revenue = user_orders.filter(
+            status='delivered',
+            payment_status='paid'
+        ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        
+        # Orders by status breakdown
+        orders_by_status = {}
+        for status_code, status_name in Order.STATUS_CHOICES:
+            orders_by_status[status_code] = {
+                'name': status_name,
+                'count': user_orders.filter(status=status_code).count()
+            }
+        
+        # Get filtered orders based on query parameters (for table updates)
+        filtered_orders = user_orders
+        
+        # Apply status filter if provided
+        status_filter = request.GET.get('status')
+        if status_filter:
+            filtered_orders = filtered_orders.filter(status=status_filter)
+        
+        # Apply date range filters if provided
+        date_from = request.GET.get('date_from')
+        if date_from:
+            try:
+                date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                filtered_orders = filtered_orders.filter(created_at__date__gte=date_from_obj)
+            except ValueError:
+                pass
+        
+        date_to = request.GET.get('date_to')
+        if date_to:
+            try:
+                date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                filtered_orders = filtered_orders.filter(created_at__date__lte=date_to_obj)
+            except ValueError:
+                pass
+        
+        # Apply priority ordering if no status filter
+        if not status_filter:
+            filtered_orders = filtered_orders.annotate(
+                status_priority=Case(
+                    When(status='pending', then=1),
+                    When(status='processing', then=2),
+                    When(status='confirmed', then=3),
+                    When(status='ready_for_pickup', then=4),
+                    When(status='shipped', then=5),
+                    default=6,
+                    output_field=IntegerField()
+                )
+            ).order_by('status_priority', '-created_at')
+        else:
+            filtered_orders = filtered_orders.order_by('-created_at')
+        
+        # Paginate orders
+        from django.core.paginator import Paginator
+        page = int(request.GET.get('page', 1))
+        paginator = Paginator(filtered_orders, 20)
+        page_obj = paginator.get_page(page)
+        
+        # Build orders data
+        orders_data = []
+        for order in page_obj:
+            orders_data.append({
+                'id': order.id,
+                'order_number': order.order_number,
+                'status': order.status,
+                'status_display': order.get_status_display(),
+                'payment_status': order.payment_status,
+                'payment_status_display': order.get_payment_status_display(),
+                'items_count': order.items.count(),
+                'total_amount': float(order.total_amount),
+                'created_at': order.created_at.isoformat(),
+                'created_at_display': order.created_at.strftime('%b %d, %Y %H:%M'),
+            })
+        
+        return Response({
+            'statistics': {
+                'total_orders': total_orders,
+                'pending_orders': pending_orders,
+                'processing_orders': processing_orders,
+                'confirmed_orders': confirmed_orders,
+                'ready_orders': ready_orders,
+                'shipped_orders': shipped_orders,
+                'delivered_orders': delivered_orders,
+                'cancelled_orders': cancelled_orders,
+                'total_revenue': float(total_revenue),
+            },
+            'orders_by_status': orders_by_status,
+            'orders': orders_data,
+            'pagination': {
+                'current_page': page_obj.number,
+                'total_pages': paginator.num_pages,
+                'has_next': page_obj.has_next(),
+                'has_previous': page_obj.has_previous(),
+            },
+        })

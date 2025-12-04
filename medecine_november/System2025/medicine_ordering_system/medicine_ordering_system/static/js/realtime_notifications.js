@@ -70,11 +70,18 @@ class RealtimeNotifications {
     async fetchNotifications(incremental = false) {
         try {
             let url = this.apiUrl;
+            // Dashboard widget only shows unread notifications
+            const params = new URLSearchParams();
+            params.append('unread_only', 'true');
+            
             if (incremental && this.lastCheckTime) {
-                url += `?last_check=${encodeURIComponent(this.lastCheckTime)}&limit=5`;
+                params.append('last_check', this.lastCheckTime);
+                params.append('limit', '5');
             } else {
-                url += '?limit=10';
+                params.append('limit', '10');
             }
+            
+            url += '?' + params.toString();
             
             const response = await fetch(url, {
                 method: 'GET',
@@ -100,16 +107,18 @@ class RealtimeNotifications {
                 this.updateNotificationCount(data.unread_count);
             }
             
-            // Update notifications widget if new notifications exist
-            if (data.notifications && data.notifications.length > 0) {
-                if (incremental) {
-                    // Show notification for new items
+            // Always update notifications widget to reflect current state
+            if (!incremental) {
+                // Full refresh - always update widget with all notifications (including updated read status)
+                this.updateNotificationWidget(data.notifications || []);
+            } else {
+                // Incremental update - only update if there are new notifications
+                if (data.notifications && data.notifications.length > 0) {
                     this.showNewNotifications(data.notifications);
+                    // For incremental updates, we need to merge with existing or replace
+                    // For now, replace to ensure consistency
+                    this.updateNotificationWidget(data.notifications);
                 }
-                this.updateNotificationWidget(data.notifications);
-            } else if (!incremental) {
-                // Initial load - update widget even if empty
-                this.updateNotificationWidget([]);
             }
             
         } catch (error) {
@@ -214,15 +223,13 @@ class RealtimeNotifications {
             `;
         });
         
-        // Update container - check if list-group exists or create it
-        let listGroup = container.querySelector('.list-group');
-        if (!listGroup) {
-            listGroup = document.createElement('div');
-            listGroup.className = 'list-group list-group-flush';
-            container.innerHTML = '';
-            container.appendChild(listGroup);
-        }
+        // Always replace the container content to ensure fresh state
+        // This ensures server-rendered HTML is replaced with fresh API data
+        container.innerHTML = '';
+        let listGroup = document.createElement('div');
+        listGroup.className = 'list-group list-group-flush';
         listGroup.innerHTML = html;
+        container.appendChild(listGroup);
         
         // Add click handlers for marking as read
         this.attachClickHandlers();
@@ -310,23 +317,54 @@ class RealtimeNotifications {
     
     async markAsRead(notificationId) {
         try {
+            // Update UI immediately (optimistic update)
+            const notificationItem = document.querySelector(`[data-notification-id="${notificationId}"]`);
+            if (notificationItem) {
+                // Remove "New" badge if present
+                const badge = notificationItem.querySelector('.badge.bg-primary');
+                if (badge) {
+                    badge.remove();
+                }
+                // Remove border indicating unread status
+                notificationItem.classList.remove('border-start', 'border-3', 'border-danger', 'border-warning', 'border-info');
+            }
+            
+            // Call API to mark as read
             const formData = new FormData();
             formData.append('notification_id', notificationId);
             
-            const response = await fetch(this.apiUrl, {
+            const csrfToken = this.getCsrfToken();
+            const response = await fetch('/common/api/notifications/mark-read/', {
                 method: 'POST',
                 body: formData,
                 headers: {
+                    'X-CSRFToken': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'same-origin'
             });
             
             if (response.ok) {
-                // Update count
                 const data = await response.json();
-                // Refresh notifications to update UI
-                this.fetchNotifications();
+                
+                // Force a full refresh (not incremental) to get updated notification state
+                this.lastCheckTime = null;
+                // Add a small delay to ensure database update is reflected
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await this.fetchNotifications(false);
+            } else {
+                // Revert optimistic update on error
+                if (notificationItem) {
+                    notificationItem.classList.add('border-start', 'border-3', 'border-info');
+                    const titleElement = notificationItem.querySelector('strong');
+                    if (titleElement && !notificationItem.querySelector('.badge.bg-primary')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'badge bg-primary';
+                        badge.textContent = 'New';
+                        titleElement.parentElement.insertBefore(badge, titleElement.nextSibling);
+                    }
+                }
+                console.error('Error marking notification as read:', response.statusText);
             }
         } catch (error) {
             console.error('Error marking notification as read:', error);
@@ -385,10 +423,39 @@ class RealtimeNotifications {
             const data = await response.json();
             
             if (data.status === 'success') {
-                // Update count immediately
+                // Optimistically update the UI immediately for instant feedback
                 this.updateNotificationCount(0);
-                // Refresh notifications after clearing to show updated state
-                await this.fetchNotifications(false); // Force full refresh
+                
+                // Clear the notification widget immediately
+                const container = document.getElementById('notifications-container');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="text-center py-4 text-muted">
+                            <i class="fas fa-bell-slash fa-3x mb-3"></i>
+                            <p>No notifications at this time</p>
+                        </div>
+                    `;
+                }
+                
+                // Hide the clear all button immediately
+                this.updateClearAllButton(false);
+                
+                // Reset last check time so next poll will fetch fresh data
+                this.lastCheckTime = null;
+                
+                // Don't refresh immediately - let the normal polling cycle handle it
+                // This ensures the database transaction has time to commit
+                // The widget is already cleared, so it will stay empty until the next poll
+                
+                // Schedule a delayed refresh after database has time to commit (2 seconds)
+                setTimeout(async () => {
+                    try {
+                        await this.fetchNotifications(false);
+                    } catch (error) {
+                        console.error('Error refreshing notifications after clear all:', error);
+                        // Widget is already cleared, so we're good even if refresh fails
+                    }
+                }, 2000);
             } else {
                 console.error('Error clearing notifications:', data.message);
                 alert('Error clearing notifications. Please try again.');

@@ -38,4 +38,6 @@ urlpatterns = [
     path('api/cart/add/', views.CartAddAPIView.as_view(), name='api_cart_add'),
     path('api/cart/remove/', views.CartRemoveAPIView.as_view(), name='api_cart_remove'),
     path('api/cart/update/', views.CartUpdateAPIView.as_view(), name='api_cart_update'),
+    path('api/pharmacist/dashboard/', views.PharmacistDashboardAPIView.as_view(), name='api_pharmacist_dashboard'),
+    path('api/sales-rep/dashboard/', views.SalesRepDashboardAPIView.as_view(), name='api_sales_rep_dashboard'),
 ]

@@ -100,11 +100,8 @@ class Order(models.Model):
         from django.utils import timezone
         
         for item in self.items.all():
-            # Decrease the medicine's current stock
-            item.medicine.current_stock -= item.quantity
-            item.medicine.save()
-            
-            # Create stock movement record
+            # Create stock movement record - the signal will handle stock decrease
+            # This prevents double-decrease and ensures stock doesn't go negative
             StockMovement.objects.create(
                 medicine=item.medicine,
                 movement_type='out',
@@ -120,11 +117,8 @@ class Order(models.Model):
         from django.utils import timezone
         
         for item in self.items.all():
-            # Restore the medicine's current stock
-            item.medicine.current_stock += item.quantity
-            item.medicine.save()
-            
-            # Create stock movement record
+            # Create stock movement record - the signal will handle stock restoration
+            # This prevents double-increase
             StockMovement.objects.create(
                 medicine=item.medicine,
                 movement_type='return',
@@ -137,8 +131,9 @@ class Order(models.Model):
     def check_stock_availability(self):
         """Check if all items in the order have sufficient stock"""
         for item in self.items.all():
-            if item.medicine.current_stock < item.quantity:
-                return False, f"Insufficient stock for {item.medicine.name}. Available: {item.medicine.current_stock}, Required: {item.quantity}"
+            available_stock = max(0, item.medicine.current_stock)  # Ensure non-negative
+            if available_stock < item.quantity:
+                return False, f"Insufficient stock for {item.medicine.name}. Available: {available_stock}, Required: {item.quantity}"
         return True, "Stock available"
     
     def save(self, *args, **kwargs):

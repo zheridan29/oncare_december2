@@ -11,6 +11,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+@receiver(pre_save, sender=Medicine)
+def ensure_non_negative_stock(sender, instance, **kwargs):
+    """
+    Ensure stock is never negative before saving to database.
+    This prevents database constraint violations.
+    """
+    if instance.current_stock < 0:
+        logger.warning(f"Medicine {instance.name} has negative stock ({instance.current_stock}). Setting to 0.")
+        instance.current_stock = 0
+
+
 @receiver(post_save, sender=Medicine)
 def check_stock_levels(sender, instance, created, **kwargs):
     """
@@ -54,16 +65,18 @@ def update_medicine_stock(sender, instance, created, **kwargs):
             medicine = instance.medicine
             
             # Update stock based on movement type
+            # Ensure we always use the absolute value for calculations
             if instance.movement_type in ['in', 'return']:
                 medicine.current_stock += abs(instance.quantity)
             elif instance.movement_type in ['out', 'damage', 'expired']:
-                medicine.current_stock = max(0, medicine.current_stock - abs(instance.quantity))
+                # Prevent negative stock - use max(0, ...) to ensure stock never goes below 0
+                new_stock = medicine.current_stock - abs(instance.quantity)
+                medicine.current_stock = max(0, new_stock)
             
             medicine.save()
-            
-            # Check for low stock after update
-            if medicine.current_stock <= medicine.reorder_point:
-                NotificationService.notify_low_stock(medicine, medicine.current_stock)
+            # Note: medicine.save() triggers the check_stock_levels signal
+            # which already handles low stock notifications, so no need to
+            # call notify_low_stock() again here
         
         except Exception as e:
             logger.error(f"Error updating stock for {instance.medicine.name}: {e}")

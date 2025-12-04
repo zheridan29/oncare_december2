@@ -45,9 +45,9 @@ class InventoryDashboardView(LoginRequiredMixin, TemplateView):
         # Reorder alerts
         pending_alerts = ReorderAlert.objects.filter(is_processed=False).order_by('-priority', '-created_at')[:5]
         
-        # Get notifications for current user
+        # Get notifications for current user (only unread for dashboard widget)
         from common.services import NotificationService
-        notifications = NotificationService.get_recent_notifications(self.request.user, limit=5)
+        notifications = NotificationService.get_recent_notifications(self.request.user, limit=5, unread_only=True)
         unread_notifications_count = NotificationService.get_unread_count(self.request.user)
         
         context.update({
@@ -263,6 +263,32 @@ class StockMovementListView(LoginRequiredMixin, ListView):
             queryset = queryset.filter(movement_type=movement_type)
         
         return queryset
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        from urllib.parse import urlencode
+        
+        # Get all medicines for filter dropdown
+        context['medicines'] = Medicine.objects.filter(is_active=True).order_by('name')
+        context['movement_types'] = StockMovement.MOVEMENT_TYPES
+        
+        # Get current filter values
+        current_medicine = self.request.GET.get('medicine', '')
+        current_movement_type = self.request.GET.get('movement_type', '')
+        
+        context['current_medicine'] = current_medicine
+        context['current_movement_type'] = current_movement_type
+        
+        # Build query string for pagination (excluding 'page' parameter)
+        query_params = {}
+        if current_medicine:
+            query_params['medicine'] = current_medicine
+        if current_movement_type:
+            query_params['movement_type'] = current_movement_type
+        
+        context['query_string'] = urlencode(query_params)
+        
+        return context
 
 
 class StockMovementCreateView(LoginRequiredMixin, CreateView):

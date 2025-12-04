@@ -1,7 +1,7 @@
 from django.shortcuts import render, get_object_or_404
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
 from django.views import View
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
 from django.urls import reverse_lazy
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Q
@@ -17,6 +17,41 @@ class NotificationListView(LoginRequiredMixin, ListView):
 
     def get_queryset(self):
         queryset = super().get_queryset().filter(user=self.request.user)
+        
+        # Exclude notifications for orders that are delivered and paid (before applying user filters)
+        from orders.models import Order
+        import re
+        
+        # Get all order IDs that are delivered and paid
+        completed_order_ids = set(Order.objects.filter(
+            status='delivered',
+            payment_status='paid'
+        ).values_list('id', flat=True))
+        
+        if completed_order_ids:
+            # Get all order-related notifications for this user (before filters)
+            order_notifications = queryset.filter(
+                notification_type__in=['order_update', 'payment_confirmation'],
+                action_url__isnull=False
+            ).only('id', 'action_url')
+            
+            # Build a list of notification IDs to exclude
+            excluded_notification_ids = []
+            
+            for notification in order_notifications:
+                if notification.action_url:
+                    # Extract order ID from action_url
+                    # URL pattern: /orders/orders/{id}/ or /orders/orders/{id}
+                    match = re.search(r'/orders/orders/(\d+)', notification.action_url)
+                    if match:
+                        order_id = int(match.group(1))
+                        if order_id in completed_order_ids:
+                            excluded_notification_ids.append(notification.id)
+            
+            # Exclude notifications for delivered and paid orders
+            if excluded_notification_ids:
+                queryset = queryset.exclude(id__in=excluded_notification_ids)
+        
         # Filter by read status
         is_read = self.request.GET.get('is_read')
         if is_read is not None:
@@ -25,6 +60,7 @@ class NotificationListView(LoginRequiredMixin, ListView):
         notification_type = self.request.GET.get('notification_type')
         if notification_type:
             queryset = queryset.filter(notification_type=notification_type)
+        
         return queryset
 
 class NotificationDetailView(LoginRequiredMixin, DetailView):
@@ -34,13 +70,70 @@ class NotificationDetailView(LoginRequiredMixin, DetailView):
 
     def get_queryset(self):
         return super().get_queryset().filter(user=self.request.user)
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        notification = self.object
+        
+        # If this is an order-related notification, try to get the order information
+        if notification.action_url and notification.notification_type in ['order_update', 'payment_confirmation']:
+            import re
+            from orders.models import Order
+            
+            # Extract order ID from action_url
+            # URL patterns: /orders/orders/{id}/ or /orders/orders/{id} or similar
+            match = re.search(r'/orders/orders/(\d+)', notification.action_url)
+            if match:
+                try:
+                    order_id = int(match.group(1))
+                    try:
+                        order = Order.objects.get(id=order_id)
+                        context['order'] = order
+                        context['order_status'] = order.get_status_display()
+                        context['order_payment_status'] = order.get_payment_status_display()
+                    except Order.DoesNotExist:
+                        pass
+                except (ValueError, TypeError):
+                    pass
+        
+        return context
 
 class NotificationMarkReadView(LoginRequiredMixin, View):
-    def post(self, request, pk):
-        notification = get_object_or_404(Notification, pk=pk, user=request.user)
-        notification.is_read = True
-        notification.save()
-        return JsonResponse({'status': 'success'})
+    def post(self, request, pk=None):
+        """
+        Mark notification as read.
+        Can be called with pk in URL (for regular views) or via POST data (for API).
+        """
+        from django.utils import timezone
+        
+        # If pk is provided in URL (regular view)
+        if pk is not None:
+            notification = get_object_or_404(Notification, pk=pk, user=request.user)
+            if not notification.is_read:
+                notification.is_read = True
+                notification.read_at = timezone.now()
+                notification.save()
+            return JsonResponse({'status': 'success'})
+        
+        # If called as API endpoint, get notification_id from POST data
+        notification_id = request.POST.get('notification_id')
+        if hasattr(request, 'data'):  # Handle DRF requests
+            notification_id = notification_id or request.data.get('notification_id')
+        
+        if notification_id:
+            try:
+                notification = get_object_or_404(Notification, pk=int(notification_id), user=request.user)
+                if not notification.is_read:
+                    notification.is_read = True
+                    notification.read_at = timezone.now()
+                    notification.save()
+                return JsonResponse({'status': 'success', 'message': 'Notification marked as read'})
+            except (ValueError, TypeError):
+                return JsonResponse({'status': 'error', 'message': 'Invalid notification_id'}, status=400)
+            except Http404:
+                return JsonResponse({'status': 'error', 'message': 'Notification not found'}, status=404)
+        else:
+            return JsonResponse({'status': 'error', 'message': 'notification_id is required'}, status=400)
 
 class NotificationClearAllView(LoginRequiredMixin, View):
     """Clear all notifications (mark all as read)"""
@@ -144,17 +237,53 @@ class NotificationAPIView(LoginRequiredMixin, View):
         
         # Get recent notifications
         limit = int(request.GET.get('limit', 10))
-        notifications_query = Notification.objects.filter(user=request.user).order_by('-created_at')
+        # Dashboard widget should only show unread notifications
+        unread_only = request.GET.get('unread_only', 'true').lower() == 'true'
+        
+        notifications_query = Notification.objects.filter(user=request.user)
+        
+        # Filter by unread status if requested (default for widget)
+        if unread_only:
+            notifications_query = notifications_query.filter(is_read=False)
         
         # If last_check is provided, only get notifications after that time
         if last_check:
             notifications_query = notifications_query.filter(created_at__gt=last_check)
         
-        notifications = notifications_query[:limit]
+        notifications_list = list(notifications_query.order_by('-created_at')[:limit])
+        
+        # Exclude notifications for orders that are delivered and paid
+        from orders.models import Order
+        import re
+        
+        # Get all order IDs that are delivered and paid
+        completed_order_ids = set(Order.objects.filter(
+            status='delivered',
+            payment_status='paid'
+        ).values_list('id', flat=True))
+        
+        if completed_order_ids:
+            # Filter out notifications for completed orders
+            filtered_notifications = []
+            for notification in notifications_list:
+                should_exclude = False
+                
+                # Check if this notification is related to a completed order
+                if notification.notification_type in ['order_update', 'payment_confirmation'] and notification.action_url:
+                    match = re.search(r'/orders/orders/(\d+)', notification.action_url)
+                    if match:
+                        order_id = int(match.group(1))
+                        if order_id in completed_order_ids:
+                            should_exclude = True
+                
+                if not should_exclude:
+                    filtered_notifications.append(notification)
+            
+            notifications_list = filtered_notifications
         
         # Build notification data
         notifications_data = []
-        for notification in notifications:
+        for notification in notifications_list:
             notifications_data.append({
                 'id': notification.id,
                 'title': notification.title,
@@ -167,8 +296,8 @@ class NotificationAPIView(LoginRequiredMixin, View):
                 'time_ago': self._get_time_ago(notification.created_at),
             })
         
-        # Get unread count
-        unread_count = NotificationService.get_unread_count(request.user)
+        # Get unread count (excluding completed orders)
+        unread_count = NotificationService.get_unread_count(request.user, exclude_completed_orders=True)
         
         # Get latest notification timestamp for next check
         latest_notification_time = None

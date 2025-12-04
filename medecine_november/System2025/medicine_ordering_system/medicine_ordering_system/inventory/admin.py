@@ -37,6 +37,23 @@ class ReorderAlertAdmin(admin.ModelAdmin):
     search_fields = ['medicine__name']
     readonly_fields = ['created_at', 'processed_at']
     actions = ['mark_as_processed']
+    
+    def mark_as_processed(self, request, queryset):
+        """Mark selected reorder alerts as processed"""
+        from django.utils import timezone
+        
+        updated = queryset.filter(is_processed=False).update(
+            is_processed=True,
+            processed_at=timezone.now(),
+            processed_by=request.user
+        )
+        
+        self.message_user(
+            request,
+            f'{updated} reorder alert(s) marked as processed.',
+            messages.SUCCESS
+        )
+    mark_as_processed.short_description = 'Mark selected alerts as processed'
 
 
 @admin.register(MedicineImage)

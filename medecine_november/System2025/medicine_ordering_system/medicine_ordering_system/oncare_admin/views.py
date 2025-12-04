@@ -71,9 +71,9 @@ class AdminDashboardView(LoginRequiredMixin, AdminRequiredMixin, TemplateView):
         # Recent activity
         recent_orders = Order.objects.select_related('sales_rep').order_by('-created_at')[:5]
         
-        # Get notifications for current user
+        # Get notifications for current user (only unread for dashboard widget)
         from common.services import NotificationService
-        notifications = NotificationService.get_recent_notifications(self.request.user, limit=5)
+        notifications = NotificationService.get_recent_notifications(self.request.user, limit=5, unread_only=True)
         unread_notifications_count = NotificationService.get_unread_count(self.request.user)
         
         # System health indicators
