@@ -366,3 +366,4 @@ python manage.py shell
 
 If all tests pass, your payment gateway is ready to use!
 
+

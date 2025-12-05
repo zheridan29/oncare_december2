@@ -362,3 +362,4 @@ Once your gateway is configured:
 
 **Questions?** Check the detailed guide: `PAYMENT_GATEWAY_SETUP_GUIDE.md`
 
+

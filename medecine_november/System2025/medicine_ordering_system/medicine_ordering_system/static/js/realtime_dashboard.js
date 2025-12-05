@@ -255,3 +255,4 @@ if (document.getElementById('pharmacist-dashboard')) {
     new RealtimeDashboard();
 }
 
+

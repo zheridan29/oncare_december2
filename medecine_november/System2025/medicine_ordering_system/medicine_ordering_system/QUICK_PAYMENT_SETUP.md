@@ -191,3 +191,4 @@ Your payment gateway is now configured and ready to use!
 
 **Need detailed instructions?** See `PAYMENT_GATEWAY_SETUP_GUIDE.md`
 
+

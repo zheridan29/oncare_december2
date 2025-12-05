@@ -2,6 +2,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.decorators import login_required
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
+from django.views import View
 from django.urls import reverse_lazy, reverse
 from django.contrib import messages
 from django.db.models import Q, Sum, F, Case, When, IntegerField
@@ -17,7 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 
 from .models import Order, OrderItem, OrderStatusHistory, Cart, CartItem
-from .forms import OrderForm, OrderWithItemsForm, OrderStatusUpdateForm, PrescriptionUploadForm, PrescriptionVerifyForm, OrderCancelForm, CartAddForm
+from .forms import OrderForm, OrderWithItemsForm, OrderStatusUpdateForm, PrescriptionUploadForm, PrescriptionVerifyForm, OrderCancelForm, CartAddForm, ManualPaymentForm
 
 
 # Dashboard View
@@ -347,6 +348,27 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
         else:
             # Sales reps can only view their own orders
             return Order.objects.filter(sales_rep=user)
+    
+    def get_context_data(self, **kwargs):
+        """Add payment context for sales reps"""
+        context = super().get_context_data(**kwargs)
+        
+        # Only add payment context for sales reps
+        if self.request.user.is_sales_rep:
+            from .payment_utils import get_payment_context
+            payment_context = get_payment_context(self.object)
+            context.update(payment_context)
+            
+            # Get active payment gateway for public key (if available)
+            try:
+                from transactions.services import PaymentGatewayFactory
+                gateway = PaymentGatewayFactory.get_active_gateway()
+                if gateway and gateway.is_configured:
+                    context['payment_gateway_public_key'] = gateway.api_key_public
+            except Exception:
+                context['payment_gateway_public_key'] = None
+        
+        return context
 
 
 class OrderEditView(LoginRequiredMixin, UpdateView):
@@ -873,6 +895,54 @@ class PharmacistOrderDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailV
     
     def test_func(self):
         return self.request.user.is_pharmacist_admin or self.request.user.is_admin
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        order = self.object
+        
+        # Get payment context
+        from transactions.models import Transaction, PaymentGateway
+        from transactions.services import PaymentGatewayFactory
+        
+        # Get related transactions
+        transactions = Transaction.objects.filter(order=order).order_by('-created_at')
+        context['transactions'] = transactions
+        
+        # Get latest transaction if exists
+        latest_transaction = transactions.first()
+        context['latest_transaction'] = latest_transaction
+        
+        # Check if payment gateway is available
+        active_gateway = PaymentGatewayFactory.get_active_gateway()
+        context['payment_gateway_available'] = active_gateway is not None and active_gateway.is_configured
+        
+        # Check if there's a gateway transaction to verify
+        gateway_transaction = transactions.filter(
+            payment_gateway__isnull=False,
+            gateway_transaction_id__isnull=False
+        ).exclude(gateway_transaction_id='').first()
+        
+        context['gateway_transaction'] = gateway_transaction
+        
+        # Check for manual payment submissions (from internal notes)
+        context['has_manual_payment_submission'] = bool(
+            order.internal_notes and 'Manual Payment Submitted' in order.internal_notes
+        )
+        
+        # Get payment proof files (FileUpload objects linked to this order)
+        from common.models import FileUpload
+        from django.contrib.contenttypes.models import ContentType
+        
+        order_content_type = ContentType.objects.get_for_model(Order)
+        payment_proof_files = FileUpload.objects.filter(
+            content_type=order_content_type,
+            object_id=order.id,
+            file_type='invoice'  # Payment proof files are stored as 'invoice' type
+        ).order_by('-uploaded_at')
+        
+        context['payment_proof_files'] = payment_proof_files
+        
+        return context
 
 
 class OrderStatusUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
@@ -1189,3 +1259,453 @@ class SalesRepDashboardAPIView(APIView):
                 'has_previous': page_obj.has_previous(),
             },
         })
+
+
+# Payment Views
+class CreatePaymentIntentView(LoginRequiredMixin, APIView):
+    """Create payment intent for Stripe payment"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, order_id):
+        """Create payment intent for an order"""
+        try:
+            order = get_object_or_404(Order, pk=order_id)
+            
+            # Verify user has access to this order
+            if not (request.user.is_pharmacist_admin or request.user.is_admin):
+                if order.sales_rep != request.user:
+                    return JsonResponse({'error': 'You do not have permission to pay for this order'}, status=403)
+            
+            # Check if payment is already made
+            if order.payment_status == 'paid':
+                return JsonResponse({'error': 'This order has already been paid'}, status=400)
+            
+            # Check if order is cancelled
+            if order.status == 'cancelled':
+                return JsonResponse({'error': 'Cannot pay for a cancelled order'}, status=400)
+            
+            # Get payment service
+            from transactions.services import PaymentGatewayFactory
+            from .payment_utils import convert_php_to_usd
+            
+            service = PaymentGatewayFactory.create_service()
+            if not service:
+                return JsonResponse({'error': 'Payment gateway is not available'}, status=503)
+            
+            # Convert PHP to USD for Stripe
+            amount_usd = convert_php_to_usd(order.total_amount)
+            
+            # Create payment intent
+            result = service.create_payment_intent(
+                order=order,
+                amount=amount_usd,
+                currency='USD',  # Stripe uses USD
+                metadata={
+                    'order_id': str(order.id),
+                    'order_number': order.order_number,
+                    'original_currency': 'PHP',
+                    'original_amount': str(order.total_amount),
+                }
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'payment_intent_id': result['payment_intent_id'],
+                'client_secret': result['client_secret'],
+                'status': result['status'],
+                'amount_usd': str(amount_usd),
+                'amount_php': str(order.total_amount),
+            })
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating payment intent: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+
+
+class ProcessPaymentView(LoginRequiredMixin, APIView):
+    """Process payment confirmation after Stripe payment"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, order_id):
+        """Process payment confirmation"""
+        try:
+            order = get_object_or_404(Order, pk=order_id)
+            payment_intent_id = request.POST.get('payment_intent_id')
+            
+            if not payment_intent_id:
+                return JsonResponse({'error': 'Payment intent ID is required'}, status=400)
+            
+            # Verify user has access to this order
+            if not (request.user.is_pharmacist_admin or request.user.is_admin):
+                if order.sales_rep != request.user:
+                    return JsonResponse({'error': 'You do not have permission to process payment for this order'}, status=403)
+            
+            # Get payment service
+            from transactions.services import PaymentGatewayFactory
+            
+            service = PaymentGatewayFactory.create_service()
+            if not service:
+                return JsonResponse({'error': 'Payment gateway is not available'}, status=503)
+            
+            # Get payment status
+            status_result = service.get_payment_status(payment_intent_id)
+            
+            # Update order payment status
+            if status_result['status'] == 'succeeded':
+                order.payment_status = 'paid'
+                order.save()
+                
+                # Create transaction record
+                from transactions.models import Transaction, PaymentMethod, PaymentGateway
+                try:
+                    payment_method = PaymentMethod.objects.filter(is_active=True).first()
+                    if not payment_method:
+                        payment_method = PaymentMethod.objects.create(
+                            name='Credit Card',
+                            description='Payment via Stripe',
+                            is_active=True
+                        )
+                    
+                    gateway = PaymentGatewayFactory.get_active_gateway()
+                    
+                    Transaction.objects.create(
+                        order=order,
+                        payment_method=payment_method,
+                        payment_gateway=gateway,
+                        transaction_type='payment',
+                        status='completed',
+                        amount=order.total_amount,
+                        net_amount=order.total_amount,
+                        gateway_transaction_id=payment_intent_id,
+                        gateway_response=status_result.get('response', {}),
+                        notes=f'Payment processed via {gateway.gateway_type if gateway else "Stripe"}'
+                    )
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Error creating transaction record: {e}")
+                
+                # Send notification
+                from common.services import NotificationService
+                NotificationService.create_notification(
+                    user=order.sales_rep,
+                    notification_type='payment_confirmation',
+                    title=f'Payment Confirmed - Order {order.order_number}',
+                    message=f'Payment of ₱{order.total_amount} has been confirmed for your order.',
+                    priority='high',
+                    action_url=reverse('orders:order_detail', args=[order.pk])
+                )
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Payment processed successfully',
+                    'payment_status': 'paid'
+                })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Payment status: {status_result["status"]}',
+                    'payment_status': status_result['status']
+                }, status=400)
+                
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error processing payment: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+
+
+class ManualPaymentSubmitView(LoginRequiredMixin, View):
+    """Submit manual payment proof"""
+    
+    def post(self, request, order_id):
+        """Submit manual payment information"""
+        order = get_object_or_404(Order, pk=order_id)
+        
+        # Verify user has access to this order
+        if not (request.user.is_pharmacist_admin or request.user.is_admin):
+            if order.sales_rep != request.user:
+                messages.error(request, 'You do not have permission to submit payment for this order.')
+                return redirect('orders:order_detail', pk=order.pk)
+        
+        # Check if payment is already made
+        if order.payment_status == 'paid':
+            messages.info(request, 'This order has already been paid.')
+            return redirect('orders:order_detail', pk=order.pk)
+        
+        form = ManualPaymentForm(request.POST, request.FILES)
+        
+        if form.is_valid():
+            # Store payment information in order notes
+            payment_ref = form.cleaned_data['payment_reference']
+            payment_date = form.cleaned_data['payment_date']
+            notes = form.cleaned_data.get('notes', '')
+            
+            payment_info = f"Manual Payment Submitted:\n"
+            payment_info += f"Reference: {payment_ref}\n"
+            payment_info += f"Date: {payment_date}\n"
+            if notes:
+                payment_info += f"Notes: {notes}\n"
+            payment_info += f"Submitted by: {request.user.get_full_name() or request.user.username}\n"
+            payment_info += f"Submitted at: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            
+            # Update order internal notes
+            if order.internal_notes:
+                order.internal_notes += f"\n\n{payment_info}"
+            else:
+                order.internal_notes = payment_info
+            
+            # Handle payment proof file upload if provided
+            if 'payment_proof' in request.FILES:
+                from common.models import FileUpload
+                proof_file = request.FILES['payment_proof']
+                FileUpload.objects.create(
+                    file_type='invoice',
+                    file=proof_file,
+                    original_filename=proof_file.name,
+                    file_size=proof_file.size,
+                    mime_type=proof_file.content_type,
+                    uploaded_by=request.user,
+                    content_object=order
+                )
+            
+            order.save()
+            
+            # Send notification to admin
+            from common.services import NotificationService
+            from accounts.models import User
+            
+            admins = User.objects.filter(Q(role='pharmacist_admin') | Q(role='admin'), is_active=True)
+            for admin in admins:
+                NotificationService.create_notification(
+                    user=admin,
+                    notification_type='payment_confirmation',
+                    title=f'Manual Payment Submitted - Order {order.order_number}',
+                    message=f'Sales rep {order.sales_rep.get_full_name() if order.sales_rep else "N/A"} submitted manual payment proof for order {order.order_number}. Reference: {payment_ref}',
+                    priority='high',
+                    action_url=reverse('orders:order_status_update', args=[order.pk])
+                )
+            
+            messages.success(request, 'Payment information submitted successfully. An admin will verify and update the payment status.')
+            return redirect('orders:order_detail', pk=order.pk)
+        else:
+            messages.error(request, 'Please correct the errors in the form.')
+            return redirect('orders:order_detail', pk=order.pk)
+
+
+# Payment Verification Views for Pharmacist/Admin
+class VerifyGatewayPaymentView(LoginRequiredMixin, UserPassesTestMixin, View):
+    """Verify payment gateway payment status"""
+    
+    def test_func(self):
+        return self.request.user.is_pharmacist_admin or self.request.user.is_admin
+    
+    def post(self, request, order_id):
+        """Verify payment gateway payment"""
+        try:
+            order = get_object_or_404(Order, pk=order_id)
+            
+            # Get the latest transaction with gateway transaction ID
+            from transactions.models import Transaction
+            transaction = Transaction.objects.filter(
+                order=order,
+                payment_gateway__isnull=False,
+                gateway_transaction_id__isnull=False
+            ).exclude(gateway_transaction_id='').order_by('-created_at').first()
+            
+            if not transaction:
+                messages.error(request, 'No gateway transaction found for this order.')
+                return redirect('orders:pharmacist_order_detail', pk=order.pk)
+            
+            # Get payment service
+            from transactions.services import PaymentGatewayFactory
+            
+            service = PaymentGatewayFactory.create_service(transaction.payment_gateway)
+            if not service:
+                messages.error(request, 'Payment gateway service is not available.')
+                return redirect('orders:pharmacist_order_detail', pk=order.pk)
+            
+            # Retrieve payment status from gateway
+            payment_status = service.get_payment_status(transaction.gateway_transaction_id)
+            
+            # Update transaction status (Stripe uses 'succeeded', other gateways may vary)
+            if payment_status['status'] in ['succeeded', 'completed']:
+                transaction.status = 'completed'
+                transaction.completed_at = timezone.now()
+                transaction.save()
+                
+                # Update order payment status
+                old_payment_status = order.payment_status
+                order.payment_status = 'paid'
+                order.save()
+                
+                # Create status history
+                from .models import OrderStatusHistory
+                OrderStatusHistory.objects.create(
+                    order=order,
+                    old_status=order.status,
+                    new_status=order.status,
+                    old_payment_status=old_payment_status,
+                    new_payment_status='paid',
+                    notes=f'Payment verified via {transaction.payment_gateway.display_name}',
+                    changed_by=request.user
+                )
+                
+                # Send notification to sales rep
+                from common.services import NotificationService
+                if order.sales_rep:
+                    NotificationService.create_notification(
+                        user=order.sales_rep,
+                        notification_type='payment_confirmation',
+                        title=f'Payment Verified - Order {order.order_number}',
+                        message=f'Payment of ₱{order.total_amount} has been verified for your order.',
+                        priority='high',
+                        action_url=reverse('orders:order_detail', args=[order.pk])
+                    )
+                
+                messages.success(request, f'Payment verified successfully via {transaction.payment_gateway.display_name}. Order payment status updated to "Paid".')
+                return redirect('orders:pharmacist_order_detail', pk=order.pk)
+            else:
+                messages.warning(request, f'Payment status is "{payment_status["status"]}". Cannot verify payment yet.')
+                return redirect('orders:pharmacist_order_detail', pk=order.pk)
+                
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error verifying gateway payment: {e}")
+            messages.error(request, f'Error verifying payment: {str(e)}')
+            return redirect('orders:pharmacist_order_detail', pk=order.pk)
+
+
+class VerifyManualPaymentView(LoginRequiredMixin, UserPassesTestMixin, View):
+    """Verify manual payment"""
+    
+    def test_func(self):
+        return self.request.user.is_pharmacist_admin or self.request.user.is_admin
+    
+    def post(self, request, order_id):
+        """Verify manual payment and update order status"""
+        order = get_object_or_404(Order, pk=order_id)
+        
+        # Check if payment is already paid
+        if order.payment_status == 'paid':
+            messages.info(request, 'This order has already been paid.')
+            return redirect('orders:pharmacist_order_detail', pk=order.pk)
+        
+        # Verify payment
+        old_payment_status = order.payment_status
+        order.payment_status = 'paid'
+        order.save()
+        
+        # Create transaction record for manual payment
+        from transactions.models import Transaction, PaymentMethod
+        
+        try:
+            payment_method = PaymentMethod.objects.filter(name__icontains='manual').first()
+            if not payment_method:
+                payment_method = PaymentMethod.objects.filter(name__icontains='bank').first()
+            if not payment_method:
+                payment_method = PaymentMethod.objects.create(
+                    name='Manual/Bank Transfer',
+                    description='Manual payment via bank transfer',
+                    is_active=True
+                )
+            
+            Transaction.objects.create(
+                order=order,
+                payment_method=payment_method,
+                transaction_type='payment',
+                status='completed',
+                amount=order.total_amount,
+                net_amount=order.total_amount,
+                completed_at=timezone.now(),
+                notes=f'Manual payment verified by {request.user.get_full_name() or request.user.username}'
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating manual payment transaction: {e}")
+        
+        # Create status history
+        from .models import OrderStatusHistory
+        OrderStatusHistory.objects.create(
+            order=order,
+            old_status=order.status,
+            new_status=order.status,
+            old_payment_status=old_payment_status,
+            new_payment_status='paid',
+            notes=f'Manual payment verified by {request.user.get_full_name() or request.user.username}',
+            changed_by=request.user
+        )
+        
+        # Send notification to sales rep
+        from common.services import NotificationService
+        if order.sales_rep:
+            NotificationService.create_notification(
+                user=order.sales_rep,
+                notification_type='payment_confirmation',
+                title=f'Payment Verified - Order {order.order_number}',
+                message=f'Your manual payment of ₱{order.total_amount} has been verified for order {order.order_number}.',
+                priority='high',
+                action_url=reverse('orders:order_detail', args=[order.pk])
+            )
+        
+        messages.success(request, f'Manual payment verified successfully. Order payment status updated to "Paid".')
+        return redirect('orders:pharmacist_order_detail', pk=order.pk)
+
+
+# Payment Details View for Pharmacist/Admin
+class PaymentDetailsView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
+    """View full payment details page for pharmacist/admin"""
+    model = Order
+    template_name = 'orders/payment_details.html'
+    context_object_name = 'order'
+    
+    def test_func(self):
+        return self.request.user.is_pharmacist_admin or self.request.user.is_admin
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        order = self.object
+        
+        # Get payment context - same as PharmacistOrderDetailView
+        from transactions.models import Transaction, PaymentGateway
+        from transactions.services import PaymentGatewayFactory
+        from common.models import FileUpload
+        from django.contrib.contenttypes.models import ContentType
+        
+        # Get related transactions
+        transactions = Transaction.objects.filter(order=order).order_by('-created_at')
+        context['transactions'] = transactions
+        context['latest_transaction'] = transactions.first()
+        
+        # Check if payment gateway is available
+        active_gateway = PaymentGatewayFactory.get_active_gateway()
+        context['payment_gateway_available'] = active_gateway is not None and active_gateway.is_configured
+        
+        # Check if there's a gateway transaction to verify
+        gateway_transaction = transactions.filter(
+            payment_gateway__isnull=False,
+            gateway_transaction_id__isnull=False
+        ).exclude(gateway_transaction_id='').first()
+        
+        context['gateway_transaction'] = gateway_transaction
+        
+        # Check for manual payment submissions (from internal notes)
+        context['has_manual_payment_submission'] = bool(
+            order.internal_notes and 'Manual Payment Submitted' in order.internal_notes
+        )
+        
+        # Get payment proof files
+        order_content_type = ContentType.objects.get_for_model(Order)
+        payment_proof_files = FileUpload.objects.filter(
+            content_type=order_content_type,
+            object_id=order.id,
+            file_type='invoice'
+        ).order_by('-uploaded_at')
+        
+        context['payment_proof_files'] = payment_proof_files
+        
+        return context

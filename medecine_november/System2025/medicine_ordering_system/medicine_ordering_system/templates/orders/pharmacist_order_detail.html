@@ -45,6 +45,8 @@
                     </div>
                     <div class="col-md-6">
                         <h6>Order Details</h6>
+                        <p><strong>Order ID:</strong> #{{ order.id }}</p>
+                        <p><strong>Order Number:</strong> {{ order.order_number }}</p>
                         <p><strong>Status:</strong> 
                             <span class="badge bg-{% if order.status == 'pending' %}warning{% elif order.status == 'processing' %}info{% elif order.status == 'ready_for_pickup' %}success{% elif order.status == 'delivered' %}dark{% elif order.status == 'cancelled' %}danger{% else %}secondary{% endif %}">
                                 {{ order.get_status_display }}
@@ -161,6 +163,175 @@
             </div>
         </div>
 
+        <!-- Payment Information Section - Always visible regardless of order status -->
+        <div class="card mb-4" id="payment-information-section">
+            <div class="card-header {% if order.payment_status == 'paid' %}bg-success text-white{% elif order.payment_status == 'pending' %}bg-warning text-dark{% else %}bg-secondary text-white{% endif %}">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-receipt me-2"></i>Payment Information
+                    </h5>
+                    <a href="{% url 'orders:payment_details' order.pk %}" class="btn btn-sm btn-light" target="_blank">
+                        <i class="fas fa-external-link-alt me-1"></i>View Full Payment Details
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if transactions %}
+                    {% for transaction in transactions %}
+                    <div class="payment-details mb-3 {% if not forloop.last %}border-bottom pb-3{% endif %}">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>Transaction ID:</strong> {{ transaction.transaction_id }}</p>
+                                <p class="mb-1"><strong>Payment Method:</strong> {{ transaction.payment_method.name }}</p>
+                                {% if transaction.payment_gateway %}
+                                <p class="mb-1"><strong>Payment Gateway:</strong> {{ transaction.payment_gateway.display_name }}</p>
+                                {% endif %}
+                                {% if transaction.gateway_transaction_id %}
+                                <p class="mb-1"><strong>Gateway Transaction ID:</strong> 
+                                    <span class="font-monospace small">{{ transaction.gateway_transaction_id }}</span>
+                                </p>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <p class="mb-1"><strong>Amount:</strong> ₱{{ transaction.amount|floatformat:2 }}</p>
+                                {% if transaction.processing_fee > 0 %}
+                                <p class="mb-1"><strong>Processing Fee:</strong> ₱{{ transaction.processing_fee|floatformat:2 }}</p>
+                                <p class="mb-1"><strong>Net Amount:</strong> ₱{{ transaction.net_amount|floatformat:2 }}</p>
+                                {% endif %}
+                                <p class="mb-1"><strong>Status:</strong> 
+                                    <span class="badge bg-{% if transaction.status == 'completed' %}success{% elif transaction.status == 'pending' %}warning{% elif transaction.status == 'failed' %}danger{% else %}secondary{% endif %}">
+                                        {{ transaction.get_status_display }}
+                                    </span>
+                                </p>
+                                <p class="mb-0"><strong>Date:</strong> {{ transaction.created_at|date:"M d, Y H:i" }}</p>
+                                {% if transaction.completed_at %}
+                                <p class="mb-0"><strong>Completed:</strong> {{ transaction.completed_at|date:"M d, Y H:i" }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% if transaction.notes %}
+                        <div class="mt-2">
+                            <strong>Notes:</strong>
+                            <p class="text-muted small mb-0">{{ transaction.notes }}</p>
+                        </div>
+                        {% endif %}
+                        {% if has_manual_payment_submission and transaction.transaction_type == 'payment' and not transaction.gateway_transaction_id %}
+                        <div class="mt-2">
+                            <a href="{% url 'orders:payment_details' order.pk %}" class="btn btn-sm btn-outline-info" target="_blank">
+                                <i class="fas fa-eye me-1"></i>View Full Payment Details
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% elif has_manual_payment_submission %}
+                    <div class="alert alert-info no-auto-hide">
+                        <strong>Manual Payment Submitted:</strong><br>
+                        <small class="text-muted">{{ order.internal_notes|truncatewords:30 }}</small>
+                        <br><br>
+                        <a href="{% url 'orders:payment_details' order.pk %}" class="btn btn-sm btn-outline-info" target="_blank">
+                            <i class="fas fa-eye me-1"></i>View Full Payment Details
+                        </a>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info mb-0 no-auto-hide">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>No payment information available yet.</strong><br>
+                        <small>Payment information will appear here once a payment method is selected or payment is submitted.</small>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Payment Verification Section - Only for pending payments -->
+        {% if order.payment_status == 'pending' %}
+        <div class="card mb-4" id="payment-verification-section">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-money-check-alt me-2"></i>Payment Verification
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- Gateway Payment Verification -->
+                {% if gateway_transaction %}
+                <div class="payment-verification-option mb-4">
+                    <h6 class="mb-3">
+                        <i class="fas fa-credit-card me-2 text-primary"></i>Online Payment (Payment Gateway)
+                    </h6>
+                    <div class="alert alert-info no-auto-hide">
+                        <strong>Transaction ID:</strong> {{ gateway_transaction.gateway_transaction_id }}<br>
+                        <strong>Payment Gateway:</strong> {{ gateway_transaction.payment_gateway.display_name }}<br>
+                        <strong>Amount:</strong> ₱{{ gateway_transaction.amount|floatformat:2 }}<br>
+                        <strong>Transaction Status:</strong> 
+                        <span class="badge bg-{% if gateway_transaction.status == 'completed' %}success{% elif gateway_transaction.status == 'pending' %}warning{% else %}secondary{% endif %}">
+                            {{ gateway_transaction.get_status_display }}
+                        </span>
+                    </div>
+                    <form method="post" action="{% url 'orders:verify_gateway_payment' order.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-check-circle me-1"></i>Verify Payment Gateway Payment
+                        </button>
+                        <small class="text-muted d-block mt-2">This will check the payment status with the gateway and update the order if payment is successful.</small>
+                    </form>
+                </div>
+                <hr>
+                {% endif %}
+                
+                <!-- Manual Payment Verification -->
+                {% if has_manual_payment_submission %}
+                <div class="payment-verification-option">
+                    <h6 class="mb-3">
+                        <i class="fas fa-university me-2 text-success"></i>Manual Payment (Bank Transfer)
+                    </h6>
+                    <div class="alert alert-warning no-auto-hide">
+                        <strong>Manual Payment Submitted:</strong><br>
+                        <small class="text-muted">{{ order.internal_notes|truncatewords:30 }}</small>
+                    </div>
+                    <form method="post" action="{% url 'orders:verify_manual_payment' order.pk %}" class="mt-3">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-check-circle me-1"></i>Verify Manual Payment
+                        </button>
+                        <small class="text-muted d-block mt-2">
+                            This will mark the order as paid after verifying the manual payment submission.
+                        </small>
+                    </form>
+                </div>
+                {% else %}
+                <div class="alert alert-info no-auto-hide" id="payment-waiting-alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Waiting for sales representative to submit payment information.
+                </div>
+                <script>
+                // Immediate protection for payment waiting alert - runs as soon as element exists
+                (function() {
+                    var alert = document.getElementById('payment-waiting-alert');
+                    if (alert) {
+                        // Force visibility immediately
+                        alert.style.setProperty('display', 'block', 'important');
+                        alert.style.setProperty('visibility', 'visible', 'important');
+                        alert.style.setProperty('opacity', '1', 'important');
+                        alert.classList.add('no-auto-hide');
+                        
+                        // Continuous monitoring
+                        setInterval(function() {
+                            if (alert.style.display === 'none' || 
+                                alert.style.visibility === 'hidden' || 
+                                alert.style.opacity === '0') {
+                                alert.style.setProperty('display', 'block', 'important');
+                                alert.style.setProperty('visibility', 'visible', 'important');
+                                alert.style.setProperty('opacity', '1', 'important');
+                            }
+                        }, 100);
+                    }
+                })();
+                </script>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
         <!-- Status History -->
         <div class="card">
             <div class="card-header">
@@ -238,7 +409,220 @@
     margin: 0;
     font-size: 12px;
 }
+
+/* Prevent Payment Information section from being hidden - Always visible regardless of order status */
+#payment-information-section {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+#payment-information-section .alert,
+#payment-information-section .no-auto-hide {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Prevent Payment Verification section alerts from being hidden */
+#payment-verification-section .alert,
+#payment-verification-section .no-auto-hide,
+#payment-waiting-alert,
+div#payment-waiting-alert.alert.alert-info.no-auto-hide {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Override any inline styles that might hide the alert */
+div#payment-waiting-alert[style*="display: none"],
+div#payment-waiting-alert[style*="display:none"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Ensure Payment Information section is ALWAYS visible regardless of order status
+    var paymentSection = $('#payment-information-section');
+    if (paymentSection.length) {
+        // Force visibility with multiple methods
+        function ensurePaymentSectionVisible() {
+            paymentSection.css({
+                'display': 'block',
+                'visibility': 'visible',
+                'opacity': '1'
+            });
+            paymentSection.show();
+            
+            // Ensure all alerts inside are visible and protected
+            paymentSection.find('.alert').each(function() {
+                $(this).addClass('no-auto-hide');
+                $(this).css({
+                    'display': 'block',
+                    'visibility': 'visible',
+                    'opacity': '1'
+                });
+            });
+        }
+        
+        // Initial visibility enforcement
+        ensurePaymentSectionVisible();
+        
+        // Monitor for any attempts to hide it
+        var observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'attributes') {
+                    var display = paymentSection.css('display');
+                    var visibility = paymentSection.css('visibility');
+                    var opacity = paymentSection.css('opacity');
+                    
+                    if (display === 'none' || visibility === 'hidden' || opacity === '0') {
+                        ensurePaymentSectionVisible();
+                    }
+                }
+            });
+        });
+        
+        observer.observe(paymentSection[0], {
+            attributes: true,
+            attributeFilter: ['style', 'class'],
+            childList: true,
+            subtree: true
+        });
+        
+        // Periodic check to ensure it stays visible (catches any attempts to hide)
+        setInterval(function() {
+            ensurePaymentSectionVisible();
+        }, 2000);
+    }
+    
+    // Ensure Payment Verification section alerts are ALWAYS visible
+    var paymentVerificationSection = $('#payment-verification-section');
+    var paymentWaitingAlert = $('#payment-waiting-alert');
+    
+    if (paymentVerificationSection.length) {
+        function ensurePaymentVerificationVisible() {
+            // Ensure section is visible
+            paymentVerificationSection.css({
+                'display': 'block',
+                'visibility': 'visible',
+                'opacity': '1'
+            });
+            paymentVerificationSection.show();
+            
+            // Ensure all alerts inside are visible and protected
+            paymentVerificationSection.find('.alert').each(function() {
+                var $alert = $(this);
+                $alert.addClass('no-auto-hide');
+                $alert.css({
+                    'display': 'block',
+                    'visibility': 'visible',
+                    'opacity': '1'
+                });
+                // Remove any inline styles that might hide it
+                $alert.removeAttr('style');
+                $alert.css({
+                    'display': 'block !important',
+                    'visibility': 'visible !important',
+                    'opacity': '1 !important'
+                });
+            });
+        }
+        
+        // Initial visibility enforcement
+        ensurePaymentVerificationVisible();
+        
+        // Monitor for any attempts to hide alerts
+        var alertObserver = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    paymentVerificationSection.find('.alert').each(function() {
+                        var $alert = $(this);
+                        var display = $alert.css('display');
+                        var visibility = $alert.css('visibility');
+                        var opacity = $alert.css('opacity');
+                        
+                        if (display === 'none' || visibility === 'hidden' || opacity === '0') {
+                            ensurePaymentVerificationVisible();
+                        }
+                    });
+                }
+            });
+        });
+        
+        // Observe all alerts in the section
+        paymentVerificationSection.find('.alert').each(function() {
+            alertObserver.observe(this, {
+                attributes: true,
+                attributeFilter: ['style', 'class']
+            });
+        });
+        
+        // Periodic check to ensure alerts stay visible
+        setInterval(function() {
+            ensurePaymentVerificationVisible();
+        }, 1000);
+    }
+    
+    // Specific protection for the "waiting for sales rep" alert
+    if (paymentWaitingAlert.length) {
+        function ensurePaymentWaitingAlertVisible() {
+            paymentWaitingAlert.addClass('no-auto-hide');
+            paymentWaitingAlert.show();
+            // Force override inline styles
+            paymentWaitingAlert[0].style.setProperty('display', 'block', 'important');
+            paymentWaitingAlert[0].style.setProperty('visibility', 'visible', 'important');
+            paymentWaitingAlert[0].style.setProperty('opacity', '1', 'important');
+        }
+        
+        // Override jQuery methods that might hide this alert
+        var originalFadeOut = $.fn.fadeOut;
+        var originalHide = $.fn.hide;
+        
+        $.fn.fadeOut = function(speed, callback) {
+            if ($(this).is('#payment-waiting-alert') || $(this).find('#payment-waiting-alert').length) {
+                return this;
+            }
+            return originalFadeOut.apply(this, arguments);
+        };
+        
+        $.fn.hide = function() {
+            if ($(this).is('#payment-waiting-alert')) {
+                ensurePaymentWaitingAlertVisible();
+                return this;
+            }
+            return originalHide.apply(this, arguments);
+        };
+        
+        ensurePaymentWaitingAlertVisible();
+        
+        // Monitor this specific alert
+        var waitingAlertObserver = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'attributes') {
+                    ensurePaymentWaitingAlertVisible();
+                }
+            });
+        });
+        
+        waitingAlertObserver.observe(paymentWaitingAlert[0], {
+            attributes: true,
+            attributeFilter: ['style', 'class'],
+            attributeOldValue: true
+        });
+        
+        // Aggressive periodic check
+        setInterval(function() {
+            ensurePaymentWaitingAlertVisible();
+        }, 500);
+    }
+});
+</script>
 {% endblock %}
 
 

@@ -243,7 +243,35 @@ Test mode: True
 
 ### 6.1 Create a Test Payment Intent
 
-In Python shell (`python manage.py shell`):
+**Important Note:** Stripe doesn't natively support PHP (Philippine Peso). For testing, we'll use USD. In production, you can implement currency conversion or use PayMongo which supports PHP.
+
+#### Option 1: Run the Test Script (Recommended)
+
+**Easiest method** - just run the batch file:
+
+```bash
+run_step6_test.bat
+```
+
+Or manually:
+
+```bash
+# Activate virtual environment first
+venv\Scripts\activate
+
+# Run the test script
+python test_payment_intent_step6.py
+```
+
+#### Option 2: Run in Python Shell (Interactive)
+
+Open a **new terminal** (not Python shell), activate venv, then:
+
+```bash
+python manage.py shell
+```
+
+Then run:
 
 ```python
 from transactions.services import PaymentGatewayFactory
@@ -252,33 +280,75 @@ from decimal import Decimal
 
 # Get payment service
 service = PaymentGatewayFactory.create_service()
+print(f"✅ Payment service created: {type(service).__name__}")
 
 # Get a test order (or create one)
 order = Order.objects.first()  # Use any existing order
 if not order:
-    print("No orders found. Create an order first.")
-else:
-    # Create payment intent
-    try:
-        result = service.create_payment_intent(
-            order=order,
-            amount=Decimal('100.00'),
-            currency='PHP'
+    print("No orders found. Creating a test order...")
+    from accounts.models import User
+    user = User.objects.filter(is_sales_rep=True).first()
+    if not user:
+        user = User.objects.first()
+    
+    if user:
+        order = Order.objects.create(
+            sales_rep=user,
+            customer_name="Test Customer",
+            customer_phone="1234567890",
+            customer_address="Test Address",
+            status='pending',
+            payment_status='pending',
+            subtotal=Decimal('100.00'),
+            total_amount=Decimal('100.00'),
+            delivery_method='pickup'
         )
-        print("✅ Payment Intent Created!")
-        print(f"Payment Intent ID: {result['payment_intent_id']}")
-        print(f"Client Secret: {result['client_secret'][:20]}...")
-        print(f"Status: {result['status']}")
-    except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"✅ Created test order: {order.order_number}")
+    else:
+        print("No users found. Cannot create test order.")
+else:
+    print(f"✅ Using existing order: {order.order_number}")
+
+# Create payment intent
+print("\n⚠️  Note: Stripe doesn't support PHP directly.")
+print("Using USD for testing...")
+
+try:
+    result = service.create_payment_intent(
+        order=order,
+        amount=Decimal('10.00'),  # $10.00 USD for testing
+        currency='USD',  # Use USD since Stripe doesn't support PHP
+        metadata={
+            'test': 'true',
+            'original_currency': 'PHP',
+            'original_amount': str(order.total_amount)
+        }
+    )
+    print("\n✅ Payment Intent Created!")
+    print(f"Payment Intent ID: {result['payment_intent_id']}")
+    print(f"Client Secret: {result['client_secret'][:30]}...")
+    print(f"Status: {result['status']}")
+    print(f"\nFull Client Secret: {result['client_secret']}")
+except Exception as e:
+    print(f"❌ Error: {e}")
+    import traceback
+    traceback.print_exc()
 ```
 
 **Expected Output:**
 ```
+✅ Payment service created: StripePaymentService
+✅ Using existing order: ORD-ABC12345
+
+⚠️  Note: Stripe doesn't support PHP directly.
+Using USD for testing...
+
 ✅ Payment Intent Created!
-Payment Intent ID: pi_3AbCdEfGhIjKlMnOpQrStUv
-Client Secret: pi_3AbCdEfGhIjKlMnOpQ...
+Payment Intent ID: pi_3Sae0YFPDvOzEmUZ08j9l4e3
+Client Secret: pi_3Sae0YFPDvOzEmUZ08j9l4e3_se...
 Status: requires_payment_method
+
+Full Client Secret: pi_3Sae0YFPDvOzEmUZ08j9l4e3_secret_...
 ```
 
 ### 6.2 Test Payment Status Check

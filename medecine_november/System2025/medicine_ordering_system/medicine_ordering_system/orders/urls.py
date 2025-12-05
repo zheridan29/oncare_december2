@@ -40,4 +40,16 @@ urlpatterns = [
     path('api/cart/update/', views.CartUpdateAPIView.as_view(), name='api_cart_update'),
     path('api/pharmacist/dashboard/', views.PharmacistDashboardAPIView.as_view(), name='api_pharmacist_dashboard'),
     path('api/sales-rep/dashboard/', views.SalesRepDashboardAPIView.as_view(), name='api_sales_rep_dashboard'),
+    
+    # Payment endpoints
+    path('api/create-payment-intent/<int:order_id>/', views.CreatePaymentIntentView.as_view(), name='create_payment_intent'),
+    path('api/process-payment/<int:order_id>/', views.ProcessPaymentView.as_view(), name='process_payment'),
+    path('orders/<int:order_id>/manual-payment/', views.ManualPaymentSubmitView.as_view(), name='manual_payment_submit'),
+    
+    # Payment verification endpoints (Pharmacist/Admin)
+    path('orders/<int:order_id>/verify-gateway-payment/', views.VerifyGatewayPaymentView.as_view(), name='verify_gateway_payment'),
+    path('orders/<int:order_id>/verify-manual-payment/', views.VerifyManualPaymentView.as_view(), name='verify_manual_payment'),
+    
+    # Payment details page (Pharmacist/Admin)
+    path('pharmacist/orders/<int:pk>/payment-details/', views.PaymentDetailsView.as_view(), name='payment_details'),
 ]

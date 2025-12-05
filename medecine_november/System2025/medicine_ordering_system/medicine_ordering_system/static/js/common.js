@@ -13,9 +13,9 @@ $(document).ready(function() {
         return new bootstrap.Popover(popoverTriggerEl);
     });
 
-    // Auto-hide alerts after 5 seconds
+    // Auto-hide alerts after 5 seconds (except those marked as no-auto-hide)
     setTimeout(function() {
-        $('.alert').fadeOut('slow');
+        $('.alert:not(.no-auto-hide)').fadeOut('slow');
     }, 5000);
 
     // Update cart count

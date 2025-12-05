@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from .models import Order, OrderItem, Cart, CartItem
 from inventory.models import Medicine
 from common.models import Address
+from django.core.validators import RegexValidator
 
 User = get_user_model()
 
@@ -228,4 +229,84 @@ class OrderCancelForm(forms.ModelForm):
         }
 
 
+class ManualPaymentForm(forms.Form):
+    """Form for submitting manual payment proof"""
+    payment_reference = forms.CharField(
+        max_length=100,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Enter payment reference number or transaction ID'
+        }),
+        help_text='Reference number from your bank transfer or payment receipt'
+    )
+    payment_date = forms.DateField(
+        required=True,
+        widget=forms.DateInput(attrs={
+            'class': 'form-control',
+            'type': 'date'
+        }),
+        help_text='Date when payment was made'
+    )
+    payment_proof = forms.FileField(
+        required=False,
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'accept': '.jpg,.jpeg,.png,.pdf,.JPG,.JPEG,.PNG,.PDF'
+        }),
+        help_text='Upload payment receipt or screenshot - Only images (JPG, PNG) and PDF files are allowed (optional)'
+    )
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'class': 'form-control',
+            'rows': 3,
+            'placeholder': 'Additional notes about the payment (optional)'
+        })
+    )
+    
+    def clean_payment_proof(self):
+        """Validate that uploaded file is an image or PDF"""
+        proof_file = self.cleaned_data.get('payment_proof')
+        
+        if proof_file:
+            # Get file extension
+            file_name = proof_file.name.lower()
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.pdf']
+            file_extension = None
+            
+            for ext in allowed_extensions:
+                if file_name.endswith(ext):
+                    file_extension = ext
+                    break
+            
+            if not file_extension:
+                raise forms.ValidationError(
+                    'Invalid file type. Only image files (JPG, PNG) and PDF files are allowed.'
+                )
+            
+            # Validate file size (max 10MB)
+            max_size = 10 * 1024 * 1024  # 10MB in bytes
+            if proof_file.size > max_size:
+                raise forms.ValidationError(
+                    f'File size exceeds the maximum allowed size of 10MB. '
+                    f'Your file size is {proof_file.size / (1024 * 1024):.2f}MB.'
+                )
+            
+            # Validate MIME type
+            allowed_mime_types = [
+                'image/jpeg',
+                'image/jpg',
+                'image/png',
+                'application/pdf',
+            ]
+            
+            if hasattr(proof_file, 'content_type') and proof_file.content_type:
+                if proof_file.content_type not in allowed_mime_types:
+                    raise forms.ValidationError(
+                        f'Invalid file type. Only image files (JPG, PNG) and PDF files are allowed. '
+                        f'File type detected: {proof_file.content_type}'
+                    )
+        
+        return proof_file
 
