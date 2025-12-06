@@ -1,17 +1,113 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import TemplateView
-from django.db.models import Count, Sum
+from django.views.generic import TemplateView, ListView, DetailView
+from django.db.models import Count, Sum, Q
 from django.utils import timezone
+from django.urls import reverse
 from datetime import datetime, timedelta
 
 # Import models from different apps
 from accounts.models import User
 from orders.models import Order
-from inventory.models import Medicine, StockMovement
+from inventory.models import Medicine, StockMovement, Category, Manufacturer
 from transactions.models import Transaction
 from analytics.models import SystemMetrics
+
+
+class LandingPageView(TemplateView):
+    """Public landing page for Neo Care Philippines - no login required"""
+    template_name = 'landing.html'
+    
+    def dispatch(self, request, *args, **kwargs):
+        # If user is already authenticated, redirect to their dashboard
+        if request.user.is_authenticated:
+            if request.user.is_admin:
+                return redirect('oncare_admin:dashboard')
+            elif request.user.is_pharmacist_admin:
+                return redirect('inventory:dashboard')
+            else:  # Sales Representative
+                return redirect('orders:dashboard')
+        return super().dispatch(request, *args, **kwargs)
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Get featured medicines (available and in stock)
+        context['featured_medicines'] = Medicine.objects.filter(
+            is_active=True,
+            is_available=True,
+            current_stock__gt=0
+        ).select_related('category', 'manufacturer')[:6]
+        
+        # Get categories for filtering
+        context['categories'] = Category.objects.filter(is_active=True)[:10]
+        
+        # Get manufacturers for filtering
+        context['manufacturers'] = Manufacturer.objects.filter(is_active=True)[:10]
+        
+        return context
+
+
+class PublicMedicineListView(ListView):
+    """Public medicine browsing - no login required"""
+    model = Medicine
+    template_name = 'public/medicine_list.html'
+    context_object_name = 'medicines'
+    paginate_by = 12
+    
+    def get_queryset(self):
+        queryset = Medicine.objects.filter(
+            is_active=True
+        ).select_related('category', 'manufacturer')
+        
+        # Search functionality
+        search = self.request.GET.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(generic_name__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        # Filter by category
+        category = self.request.GET.get('category')
+        if category:
+            queryset = queryset.filter(category_id=category)
+        
+        # Filter by manufacturer
+        manufacturer = self.request.GET.get('manufacturer')
+        if manufacturer:
+            queryset = queryset.filter(manufacturer_id=manufacturer)
+        
+        # Filter by availability
+        availability = self.request.GET.get('availability')
+        if availability == 'in_stock':
+            queryset = queryset.filter(current_stock__gt=0)
+        elif availability == 'low_stock':
+            queryset = queryset.filter(current_stock__gt=0, current_stock__lte=20)
+        elif availability == 'out_of_stock':
+            queryset = queryset.filter(current_stock=0)
+        
+        return queryset.order_by('name')
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['categories'] = Category.objects.filter(is_active=True)
+        context['manufacturers'] = Manufacturer.objects.filter(is_active=True)
+        return context
+
+
+class PublicMedicineDetailView(DetailView):
+    """Public medicine detail view - no login required, view-only"""
+    model = Medicine
+    template_name = 'public/medicine_detail.html'
+    context_object_name = 'medicine'
+    
+    def get_queryset(self):
+        return Medicine.objects.filter(
+            is_active=True
+        ).select_related('category', 'manufacturer')
+
 
 class HomeView(LoginRequiredMixin, TemplateView):
     """Home page view that redirects users based on their role"""

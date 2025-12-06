@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neo Care Philippines - Your Trusted Medicine Partner</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #0d6efd;
+            --secondary-color: #6c757d;
+            --success-color: #198754;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+        }
+        
+        .hero-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 0;
+            margin-bottom: 60px;
+        }
+        
+        .hero-section h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+        
+        .hero-section p {
+            font-size: 1.25rem;
+            margin-bottom: 30px;
+        }
+        
+        .feature-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            height: 100%;
+            border: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+        
+        .medicine-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            height: 100%;
+            border: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .medicine-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+        
+        .stock-badge {
+            font-size: 0.85rem;
+            padding: 0.5rem 1rem;
+        }
+        
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 50px;
+            text-align: center;
+            color: #333;
+        }
+        
+        .about-section {
+            background-color: #f8f9fa;
+            padding: 80px 0;
+            margin: 60px 0;
+        }
+        
+        .btn-login {
+            padding: 12px 40px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+        }
+        
+        .navbar-custom {
+            background-color: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .footer-custom {
+            background-color: #2c3e50;
+            color: white;
+            padding: 40px 0;
+            margin-top: 80px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom fixed-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{% url 'landing' %}">
+                <i class="fas fa-pills me-2 text-primary"></i>Neo Care Philippines
+            </a>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#about">About</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#medicines">Medicines</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'public_medicine_list' %}">Browse All</a>
+                    </li>
+                </ul>
+                
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link btn btn-primary btn-login text-white" href="{% url 'accounts:login' %}">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-section" style="margin-top: 76px;">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-6">
+                    <h1>
+                        <i class="fas fa-heartbeat me-3"></i>Neo Care Philippines
+                    </h1>
+                    <p class="lead">
+                        A trusted Drug Distributor/Importer founded in 1997, providing quality medicines 
+                        at affordable prices across all regions in Luzon.
+                    </p>
+                    <div class="d-flex gap-3 flex-wrap">
+                        <a href="{% url 'public_medicine_list' %}" class="btn btn-light btn-lg">
+                            <i class="fas fa-search me-2"></i>Browse Medicines
+                        </a>
+                        <a href="#about" class="btn btn-outline-light btn-lg">
+                            <i class="fas fa-info-circle me-2"></i>Learn More
+                        </a>
+                    </div>
+                </div>
+                <div class="col-lg-6 text-center">
+                    <i class="fas fa-pills" style="font-size: 200px; opacity: 0.3;"></i>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="about-section">
+        <div class="container">
+            <h2 class="section-title">About Neo Care Philippines</h2>
+            
+            <!-- Company Profile -->
+            <div class="row mb-5">
+                <div class="col-lg-10 mx-auto">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-5">
+                            <h3 class="mb-4">
+                                <i class="fas fa-building me-2 text-primary"></i>Company Profile
+                            </h3>
+                            <p class="lead mb-4">
+                                Neo Care Philippines (NCP) is a single proprietorship founded in <strong>October 1997</strong> by 
+                                <strong>Lenny Castillo</strong>. It is classified as <strong>Drug Distributor/Importer by FDA</strong>.
+                            </p>
+                            <p>
+                                It started as a trading company operating in Batangas province selling oral and injectable antibiotics. 
+                                After years of operation and with the blessing from the Lord, the company is now carrying 
+                                <strong>ten brands of medicines to all regions in Luzon</strong> which are all registered under the 
+                                company's name.
+                            </p>
+                            <p class="mb-0">
+                                At present NCP is engaged in the <strong>importation of finished products</strong> for wholesale distribution, 
+                                promotion, and marketing of drugs and medicines to other pharmaceutical establishments and outlets.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Vision and Mission -->
+            <div class="row mb-5">
+                <div class="col-lg-6 mb-4">
+                    <div class="card feature-card h-100 border-primary">
+                        <div class="card-body p-4">
+                            <div class="text-center mb-4">
+                                <i class="fas fa-eye fa-3x text-primary"></i>
+                            </div>
+                            <h3 class="card-title text-center mb-4">
+                                <strong><u>Company Vision</u></strong>
+                            </h3>
+                            <p class="card-text text-center lead" style="font-style: italic;">
+                                "To be the number one pharmaceutical supplier in the Philippines by selling the 
+                                highest quality medicines at most affordable price"
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 mb-4">
+                    <div class="card feature-card h-100 border-success">
+                        <div class="card-body p-4">
+                            <div class="text-center mb-4">
+                                <i class="fas fa-bullseye fa-3x text-success"></i>
+                            </div>
+                            <h3 class="card-title text-center mb-4">
+                                <strong><u>Company Mission</u></strong>
+                            </h3>
+                            <p class="card-text" style="font-style: italic;">
+                                "To help Filipino families live happier and healthier and to help in nation building by 
+                                providing high quality medicine at affordable price, by adhering to the biblical standard of 
+                                doing business, by giving its employees meaningful work opportunities, by committing to 
+                                suppliers & investors a lucrative rate of return and by adhering to the government policies 
+                                and concerns."
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Key Features -->
+            <div class="row mb-5">
+                <div class="col-md-4 mb-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center p-4">
+                            <div class="mb-3">
+                                <i class="fas fa-shield-alt fa-3x text-primary"></i>
+                            </div>
+                            <h4 class="card-title">FDA Licensed</h4>
+                            <p class="card-text">
+                                Classified as Drug Distributor/Importer by the Food and Drug Administration (FDA) 
+                                ensuring regulatory compliance and quality standards.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center p-4">
+                            <div class="mb-3">
+                                <i class="fas fa-map-marked-alt fa-3x text-success"></i>
+                            </div>
+                            <h4 class="card-title">Nationwide Reach</h4>
+                            <p class="card-text">
+                                Serving all regions in Luzon with ten registered medicine brands, providing 
+                                comprehensive pharmaceutical distribution.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center p-4">
+                            <div class="mb-3">
+                                <i class="fas fa-pills fa-3x text-info"></i>
+                            </div>
+                            <h4 class="card-title">Quality Products</h4>
+                            <p class="card-text">
+                                Specializing in importation, wholesale distribution, promotion, and marketing of 
+                                drugs and medicines to pharmaceutical establishments.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Contact Information -->
+            <div class="row">
+                <div class="col-lg-8 mx-auto">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-primary text-white">
+                            <h4 class="card-title mb-0">
+                                <i class="fas fa-address-card me-2"></i>Contact Information
+                            </h4>
+                        </div>
+                        <div class="card-body p-4">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <h6 class="text-primary">
+                                        <i class="fas fa-map-marker-alt me-2"></i>Business Address
+                                    </h6>
+                                    <p class="mb-0">No. 2 Pinagkurusan, Alitagtag, Batangas</p>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <h6 class="text-primary">
+                                        <i class="fas fa-phone me-2"></i>Telefax
+                                    </h6>
+                                    <p class="mb-0">(043) 772-0108</p>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <h6 class="text-primary">
+                                        <i class="fas fa-envelope me-2"></i>Email Address
+                                    </h6>
+                                    <p class="mb-0">
+                                        <a href="mailto:neocarephils@yahoo.com">neocarephils@yahoo.com</a>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Featured Medicines Section -->
+    <section id="medicines" class="py-5">
+        <div class="container">
+            <h2 class="section-title">Browse Our Medicine Catalog</h2>
+            <p class="text-center text-muted mb-5">
+                Check availability and details of our extensive range of medicines. 
+                <a href="{% url 'public_medicine_list' %}">View all medicines</a>
+            </p>
+            
+            {% if featured_medicines %}
+            <div class="row">
+                {% for medicine in featured_medicines %}
+                <div class="col-md-4 col-lg-3 mb-4">
+                    <div class="card medicine-card">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ medicine.name }}</h5>
+                            <p class="card-text text-muted small mb-2">
+                                <i class="fas fa-industry me-1"></i>{{ medicine.manufacturer.name }}
+                            </p>
+                            <p class="card-text small mb-3">
+                                <strong>Strength:</strong> {{ medicine.strength }}<br>
+                                <strong>Form:</strong> {{ medicine.dosage_form }}
+                            </p>
+                            
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="badge bg-{% if medicine.current_stock == 0 %}danger{% elif medicine.current_stock <= 20 %}warning{% else %}success{% endif %} stock-badge">
+                                    {% if medicine.current_stock == 0 %}
+                                        <i class="fas fa-times-circle me-1"></i>Out of Stock
+                                    {% elif medicine.current_stock <= 20 %}
+                                        <i class="fas fa-exclamation-triangle me-1"></i>Low Stock ({{ medicine.current_stock }})
+                                    {% else %}
+                                        <i class="fas fa-check-circle me-1"></i>In Stock ({{ medicine.current_stock }})
+                                    {% endif %}
+                                </span>
+                            </div>
+                            
+                            <a href="{% url 'public_medicine_detail' medicine.pk %}" class="btn btn-outline-primary btn-sm w-100">
+                                <i class="fas fa-info-circle me-1"></i>View Details
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="alert alert-info text-center">
+                <i class="fas fa-info-circle me-2"></i>No medicines available at the moment.
+            </div>
+            {% endif %}
+            
+            <div class="text-center mt-5">
+                <a href="{% url 'public_medicine_list' %}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-list me-2"></i>View All Medicines
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Call to Action -->
+    <section class="py-5" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+        <div class="container text-center">
+            <h2 class="mb-4">Ready to Get Started?</h2>
+            <p class="lead mb-4">
+                Login to access our full ordering system and place orders for your healthcare facility.
+            </p>
+            <a href="{% url 'accounts:login' %}" class="btn btn-light btn-lg">
+                <i class="fas fa-sign-in-alt me-2"></i>Login to Order
+            </a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer-custom">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <h5><i class="fas fa-pills me-2"></i>Neo Care Philippines</h5>
+                    <p class="mb-2">Founded in 1997 by Lenny Castillo</p>
+                    <p class="mb-0 small">Drug Distributor/Importer (FDA Licensed)</p>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <h6 class="mb-2">Contact Us</h6>
+                    <p class="mb-1 small">
+                        <i class="fas fa-map-marker-alt me-1"></i>
+                        No. 2 Pinagkurusan, Alitagtag, Batangas
+                    </p>
+                    <p class="mb-1 small">
+                        <i class="fas fa-phone me-1"></i>
+                        (043) 772-0108
+                    </p>
+                    <p class="mb-0 small">
+                        <i class="fas fa-envelope me-1"></i>
+                        <a href="mailto:neocarephils@yahoo.com" class="text-light">neocarephils@yahoo.com</a>
+                    </p>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <p class="mb-0">&copy; 2024 Neo Care Philippines. All rights reserved.</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Smooth Scrolling -->
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

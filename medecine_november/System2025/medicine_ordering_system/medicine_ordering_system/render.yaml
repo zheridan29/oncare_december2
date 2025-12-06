@@ -1,0 +1,23 @@
+databases:
+  - name: medicineorderingdb
+    plan: free
+    databaseName: medicine_ordering_db
+    user: medicine_ordering_user
+
+services:
+  - type: web
+    plan: free
+    name: medicine-ordering-system
+    runtime: python
+    buildCommand: './build.sh'
+    startCommand: 'python -m gunicorn medicine_ordering_system.asgi:application -k uvicorn.workers.UvicornWorker'
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: medicineorderingdb
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: WEB_CONCURRENCY
+        value: 4
+

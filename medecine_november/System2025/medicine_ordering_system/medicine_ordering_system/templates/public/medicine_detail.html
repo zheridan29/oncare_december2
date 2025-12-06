@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ medicine.name }} - Neo Care Philippines</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        .medicine-detail-card {
+            border: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .navbar-custom {
+            background-color: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .info-badge {
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+        }
+        
+        .stock-status {
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom fixed-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{% url 'landing' %}">
+                <i class="fas fa-pills me-2 text-primary"></i>Neo Care Philippines
+            </a>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'landing' %}#about">About</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'public_medicine_list' %}">Browse Medicines</a>
+                    </li>
+                </ul>
+                
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link btn btn-primary text-white" href="{% url 'accounts:login' %}">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container" style="margin-top: 100px; margin-bottom: 50px;">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h1 class="display-5">
+                        <i class="fas fa-pills me-2 text-primary"></i>{{ medicine.name }}
+                    </h1>
+                    <a href="{% url 'public_medicine_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Back to Medicines
+                    </a>
+                </div>
+                {% if medicine.generic_name %}
+                <p class="text-muted mt-2">
+                    <em>Generic Name: {{ medicine.generic_name }}</em>
+                </p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Medicine Image/Icon -->
+            <div class="col-md-4 mb-4">
+                <div class="card medicine-detail-card">
+                    <div class="card-body text-center">
+                        <div class="bg-light d-flex align-items-center justify-content-center mb-3" style="height: 300px; border-radius: 10px;">
+                            <i class="fas fa-pills fa-5x text-primary"></i>
+                        </div>
+                        
+                        <h5 class="card-title">{{ medicine.name }}</h5>
+                        <p class="text-muted mb-4">{{ medicine.manufacturer.name }}</p>
+                        
+                        <div class="row text-center mb-4">
+                            <div class="col-6">
+                                <h4 class="text-primary">₱{{ medicine.unit_price|floatformat:2 }}</h4>
+                                <small class="text-muted">Unit Price</small>
+                            </div>
+                            <div class="col-6">
+                                <div class="stock-status text-{% if medicine.current_stock == 0 %}danger{% elif medicine.current_stock <= 20 %}warning{% else %}success{% endif %}">
+                                    {{ medicine.current_stock }}
+                                </div>
+                                <small class="text-muted">In Stock</small>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <span class="badge bg-{% if medicine.current_stock == 0 %}danger{% elif medicine.current_stock <= 20 %}warning{% else %}success{% endif %} info-badge">
+                                {% if medicine.current_stock == 0 %}
+                                    <i class="fas fa-times-circle me-1"></i>Out of Stock
+                                {% elif medicine.current_stock <= 20 %}
+                                    <i class="fas fa-exclamation-triangle me-1"></i>Low Stock
+                                {% else %}
+                                    <i class="fas fa-check-circle me-1"></i>Available
+                                {% endif %}
+                            </span>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Note:</strong> This is a view-only page. To place orders, please 
+                            <a href="{% url 'accounts:login' %}" class="alert-link">login</a>.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Medicine Information -->
+            <div class="col-md-8">
+                <div class="card medicine-detail-card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-info-circle me-2"></i>Medicine Information
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <table class="table table-borderless">
+                                    <tr>
+                                        <td><strong>Generic Name:</strong></td>
+                                        <td>{{ medicine.generic_name|default:"N/A" }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Category:</strong></td>
+                                        <td>
+                                            <span class="badge bg-secondary">{{ medicine.category.name }}</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Manufacturer:</strong></td>
+                                        <td>{{ medicine.manufacturer.name }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Dosage Form:</strong></td>
+                                        <td>{{ medicine.dosage_form|default:"N/A" }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Strength:</strong></td>
+                                        <td>{{ medicine.strength|default:"N/A" }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Prescription Type:</strong></td>
+                                        <td>
+                                            <span class="badge bg-{% if medicine.prescription_type == 'prescription' %}warning{% elif medicine.prescription_type == 'controlled' %}danger{% else %}success{% endif %}">
+                                                {{ medicine.get_prescription_type_display }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-borderless">
+                                    <tr>
+                                        <td><strong>Current Stock:</strong></td>
+                                        <td>
+                                            <span class="badge bg-{% if medicine.current_stock == 0 %}danger{% elif medicine.current_stock <= 20 %}warning{% else %}success{% endif %}">
+                                                {{ medicine.current_stock }} units
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Stock Status:</strong></td>
+                                        <td>
+                                            <span class="badge bg-{% if medicine.is_out_of_stock %}danger{% elif medicine.is_low_stock %}warning{% else %}success{% endif %}">
+                                                {{ medicine.stock_status }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Availability:</strong></td>
+                                        <td>
+                                            <span class="badge bg-{% if medicine.is_available %}success{% else %}danger{% endif %}">
+                                                {% if medicine.is_available %}Available{% else %}Unavailable{% endif %}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Requires Prescription:</strong></td>
+                                        <td>
+                                            <span class="badge bg-{% if medicine.requires_prescription %}warning{% else %}success{% endif %}">
+                                                {% if medicine.requires_prescription %}Yes{% else %}No{% endif %}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% if medicine.ndc_number %}
+                                    <tr>
+                                        <td><strong>NDC Number:</strong></td>
+                                        <td><code>{{ medicine.ndc_number }}</code></td>
+                                    </tr>
+                                    {% endif %}
+                                </table>
+                            </div>
+                        </div>
+                        
+                        {% if medicine.description %}
+                        <div class="mt-4">
+                            <h6><i class="fas fa-file-alt me-2"></i>Description:</h6>
+                            <p class="text-muted">{{ medicine.description }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if medicine.storage_conditions %}
+                        <div class="mt-3">
+                            <h6><i class="fas fa-thermometer-half me-2"></i>Storage Conditions:</h6>
+                            <p class="text-muted">{{ medicine.storage_conditions }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Additional Information -->
+                {% if medicine.weight or medicine.dimensions or medicine.fda_approval_date or medicine.expiry_date %}
+                <div class="card medicine-detail-card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-clipboard-list me-2"></i>Additional Information
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <table class="table table-borderless">
+                                    {% if medicine.weight %}
+                                    <tr>
+                                        <td><strong>Weight:</strong></td>
+                                        <td>{{ medicine.weight }} grams</td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if medicine.dimensions %}
+                                    <tr>
+                                        <td><strong>Dimensions:</strong></td>
+                                        <td>{{ medicine.dimensions }}</td>
+                                    </tr>
+                                    {% endif %}
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-borderless">
+                                    {% if medicine.fda_approval_date %}
+                                    <tr>
+                                        <td><strong>FDA Approval Date:</strong></td>
+                                        <td>{{ medicine.fda_approval_date|date:"M d, Y" }}</td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if medicine.expiry_date %}
+                                    <tr>
+                                        <td><strong>Expiry Date:</strong></td>
+                                        <td>{{ medicine.expiry_date|date:"M d, Y" }}</td>
+                                    </tr>
+                                    {% endif %}
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Call to Action -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card border-primary">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">
+                            <i class="fas fa-shopping-cart me-2"></i>Interested in Ordering?
+                        </h5>
+                        <p class="card-text">
+                            Login to access our full ordering system and place orders for this medicine.
+                        </p>
+                        <a href="{% url 'accounts:login' %}" class="btn btn-primary btn-lg me-2">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login to Order
+                        </a>
+                        <a href="{% url 'public_medicine_list' %}" class="btn btn-outline-secondary btn-lg">
+                            <i class="fas fa-list me-2"></i>Browse More Medicines
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5><i class="fas fa-pills me-2"></i>Neo Care Philippines</h5>
+                    <p class="mb-0">Your trusted partner for quality medicines and healthcare solutions.</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p class="mb-0">&copy; 2024 Neo Care Philippines. All rights reserved.</p>
+                    <small class="text-muted">Licensed Pharmaceutical Distributor</small>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+

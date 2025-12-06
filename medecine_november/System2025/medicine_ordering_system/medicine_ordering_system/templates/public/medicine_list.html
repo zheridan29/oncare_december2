@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse Medicines - Neo Care Philippines</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        .medicine-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            height: 100%;
+            border: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .medicine-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+        
+        .stock-badge {
+            font-size: 0.85rem;
+            padding: 0.5rem 1rem;
+        }
+        
+        .navbar-custom {
+            background-color: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .filter-section {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom fixed-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{% url 'landing' %}">
+                <i class="fas fa-pills me-2 text-primary"></i>Neo Care Philippines
+            </a>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'landing' %}#about">About</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{% url 'public_medicine_list' %}">Browse Medicines</a>
+                    </li>
+                </ul>
+                
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link btn btn-primary text-white" href="{% url 'accounts:login' %}">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container" style="margin-top: 100px; margin-bottom: 50px;">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1 class="display-5 mb-3">
+                    <i class="fas fa-pills me-2 text-primary"></i>Medicine Catalog
+                </h1>
+                <p class="text-muted">
+                    Browse our extensive range of medicines. Check availability and view detailed information. 
+                    <strong>Note:</strong> This is a view-only catalog. To place orders, please login.
+                </p>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-section">
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    <label for="search" class="form-label">
+                        <i class="fas fa-search me-1"></i>Search
+                    </label>
+                    <input type="text" class="form-control" id="search" name="search" 
+                           value="{{ request.GET.search }}" 
+                           placeholder="Medicine name, generic name, or description">
+                </div>
+                <div class="col-md-3">
+                    <label for="category" class="form-label">
+                        <i class="fas fa-tags me-1"></i>Category
+                    </label>
+                    <select class="form-select" id="category" name="category">
+                        <option value="">All Categories</option>
+                        {% for category in categories %}
+                            <option value="{{ category.id }}" 
+                                {% if request.GET.category == category.id|stringformat:"s" %}selected{% endif %}>
+                                {{ category.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="manufacturer" class="form-label">
+                        <i class="fas fa-industry me-1"></i>Manufacturer
+                    </label>
+                    <select class="form-select" id="manufacturer" name="manufacturer">
+                        <option value="">All Manufacturers</option>
+                        {% for manufacturer in manufacturers %}
+                            <option value="{{ manufacturer.id }}" 
+                                {% if request.GET.manufacturer == manufacturer.id|stringformat:"s" %}selected{% endif %}>
+                                {{ manufacturer.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="availability" class="form-label">
+                        <i class="fas fa-box me-1"></i>Availability
+                    </label>
+                    <select class="form-select" id="availability" name="availability">
+                        <option value="">All</option>
+                        <option value="in_stock" {% if request.GET.availability == 'in_stock' %}selected{% endif %}>In Stock</option>
+                        <option value="low_stock" {% if request.GET.availability == 'low_stock' %}selected{% endif %}>Low Stock</option>
+                        <option value="out_of_stock" {% if request.GET.availability == 'out_of_stock' %}selected{% endif %}>Out of Stock</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-filter me-2"></i>Apply Filters
+                    </button>
+                    <a href="{% url 'public_medicine_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-redo me-2"></i>Clear Filters
+                    </a>
+                </div>
+            </form>
+        </div>
+
+        <!-- Medicine List -->
+        {% if medicines %}
+        <div class="row">
+            {% for medicine in medicines %}
+            <div class="col-md-4 col-lg-3 mb-4">
+                <div class="card medicine-card">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ medicine.name }}</h5>
+                        {% if medicine.generic_name %}
+                        <p class="card-text text-muted small mb-1">
+                            <em>{{ medicine.generic_name }}</em>
+                        </p>
+                        {% endif %}
+                        <p class="card-text text-muted small mb-2">
+                            <i class="fas fa-industry me-1"></i>{{ medicine.manufacturer.name }}
+                        </p>
+                        <p class="card-text small mb-2">
+                            <strong>Strength:</strong> {{ medicine.strength }}<br>
+                            <strong>Form:</strong> {{ medicine.dosage_form }}<br>
+                            <strong>Category:</strong> {{ medicine.category.name }}
+                        </p>
+                        
+                        {% if medicine.description %}
+                        <p class="card-text small text-muted mb-3">
+                            {{ medicine.description|truncatewords:15 }}
+                        </p>
+                        {% endif %}
+                        
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="badge bg-{% if medicine.current_stock == 0 %}danger{% elif medicine.current_stock <= 20 %}warning{% else %}success{% endif %} stock-badge">
+                                {% if medicine.current_stock == 0 %}
+                                    <i class="fas fa-times-circle me-1"></i>Out of Stock
+                                {% elif medicine.current_stock <= 20 %}
+                                    <i class="fas fa-exclamation-triangle me-1"></i>Low Stock ({{ medicine.current_stock }})
+                                {% else %}
+                                    <i class="fas fa-check-circle me-1"></i>In Stock ({{ medicine.current_stock }})
+                                {% endif %}
+                            </span>
+                        </div>
+                        
+                        <a href="{% url 'public_medicine_detail' medicine.pk %}" class="btn btn-outline-primary btn-sm w-100">
+                            <i class="fas fa-info-circle me-1"></i>View Details
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        {% if is_paginated %}
+        <nav aria-label="Medicine pagination">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.category %}&category={{ request.GET.category }}{% endif %}{% if request.GET.manufacturer %}&manufacturer={{ request.GET.manufacturer }}{% endif %}{% if request.GET.availability %}&availability={{ request.GET.availability }}{% endif %}">First</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.category %}&category={{ request.GET.category }}{% endif %}{% if request.GET.manufacturer %}&manufacturer={{ request.GET.manufacturer }}{% endif %}{% if request.GET.availability %}&availability={{ request.GET.availability }}{% endif %}">Previous</a>
+                    </li>
+                {% endif %}
+                
+                <li class="page-item active">
+                    <span class="page-link">
+                        Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                    </span>
+                </li>
+                
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.category %}&category={{ request.GET.category }}{% endif %}{% if request.GET.manufacturer %}&manufacturer={{ request.GET.manufacturer }}{% endif %}{% if request.GET.availability %}&availability={{ request.GET.availability }}{% endif %}">Next</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.category %}&category={{ request.GET.category }}{% endif %}{% if request.GET.manufacturer %}&manufacturer={{ request.GET.manufacturer }}{% endif %}{% if request.GET.availability %}&availability={{ request.GET.availability }}{% endif %}">Last</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+        {% else %}
+        <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle me-2"></i>No medicines found matching your criteria.
+        </div>
+        {% endif %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5><i class="fas fa-pills me-2"></i>Neo Care Philippines</h5>
+                    <p class="mb-0">Your trusted partner for quality medicines and healthcare solutions.</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p class="mb-0">&copy; 2025 Neo Care Philippines. All rights reserved.</p>
+                    <small class="text-muted">Licensed Pharmaceutical Distributor</small>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+

@@ -11,6 +11,16 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+
+"""
+This is for render deployment
+https://render.com/docs/deploy-django
+"""
+import dj_database_url
+"""
+End render deployment
+"""
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,12 +30,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-)05bc-z7k=0dgk_)p3368f32)zxtx(%8797%uy(o-rebaugq-0'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-)05bc-z7k=0dgk_)p3368f32)zxtx(%8797%uy(o-rebaugq-0')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = 'RENDER' not in os.environ
 
 ALLOWED_HOSTS = []
+
+# Render configuration
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 
 # Application definition
@@ -59,6 +74,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -105,19 +121,24 @@ WSGI_APPLICATION = 'medicine_ordering_system.wsgi.application'
 #     }
 # }
 
+    # DATABASES = {
+    #     'default': {
+    #         'ENGINE': 'django.db.backends.postgresql',
+    #         'NAME': 'your_database_name',  # Replace with your PostgreSQL database name
+    #         'USER': 'your_database_user',  # Replace with your PostgreSQL username
+    #         'PASSWORD': 'your_database_password',  # Replace with your PostgreSQL password
+    #         'HOST': 'localhost',  # Or the IP address/hostname of your PostgreSQL server
+    #         'PORT': '5432',  # Default PostgreSQL port, change if different
+    #     }
+    # }
+
+# Database configuration - uses Render PostgreSQL when DATABASE_URL is set
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'oncare_medicine_db',
-        'USER': 'postgres',
-        'PASSWORD': 'z3rr3Itug',
-        'HOST': 'localhost',
-        'PORT': '5433',
-        'OPTIONS': {
-            'connect_timeout': 10,
-        },
-        'CONN_MAX_AGE': 0,  # Set to 0 for debugging, use 600 for production
-    }
+    'default': dj_database_url.config(
+        # Replace this value with your local database's connection string for local development
+        default='postgresql://postgres:z3rr3Itug@localhost:5433/oncare_medicine_db',
+        conn_max_age=600
+    )
 }
 
 # DATABASES = {
@@ -177,7 +198,22 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+# This setting informs Django of the URI path from which your static files will be served to users
+# Here, they will be accessible at your-domain.onrender.com/static/... or yourcustomdomain.com/static/...
+STATIC_URL = '/static/'
+
+# This production code might break development mode, so we check whether we're in DEBUG mode
+if not DEBUG:
+    # Tell Django to copy static assets into a path called `staticfiles` (this is specific to Render)
+    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+    # Enable the WhiteNoise storage backend, which compresses static files to reduce disk use
+    # and renames the files with unique names for each version to support long-term caching
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+else:
+    # Development mode - use these settings
+    STATICFILES_DIRS = [
+        BASE_DIR / 'static',
+    ]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -186,12 +222,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Custom settings
 AUTH_USER_MODEL = 'accounts.User'
-
-# Static files configuration
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
 
 # Media files
 MEDIA_URL = '/media/'
